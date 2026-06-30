@@ -1244,6 +1244,10 @@ static ImU32 ChipTimeColor(TimeOfDay t) {
     }
 }
 
+static const char* FishWaterChipLabel(const Fish& f) {
+    return f.holeType != HoleWater::Any ? HoleWaterName(f.holeType) : WaterTypeName(f.water);
+}
+
 static ImU32 ChipWaterColor(WaterType w) {
     switch (w) {
         case WaterType::Freshwater: return IM_COL32( 80,140,220,255);
@@ -2104,7 +2108,7 @@ void AddonRender() {
                                 });
                             chip(TimeOfDayName(f.time), ChipTimeColor(f.time),
                                 [&](ImDrawList* d, ImVec2 ip, float s, ImU32 c){ DrawChipTimeIcon(d,ip,s,f.time,c); });
-                            chip(WaterTypeName(f.water), ChipWaterColor(f.water),
+                            chip(FishWaterChipLabel(f), ChipWaterColor(f.water),
                                 [&](ImDrawList* d, ImVec2 ip, float s, ImU32 c){ DrawChipWaterIcon(d,ip,s,f.water,c); });
 
                             bool fav = IsFavourite(f.name);
@@ -2236,7 +2240,7 @@ void AddonRender() {
                     chip(TimeOfDayName(f.time), ChipTimeColor(f.time),
                         [&](ImDrawList* d, ImVec2 ip, float s, ImU32 c){
                             DrawChipTimeIcon(d, ip, s, f.time, c); });
-                    chip(WaterTypeName(f.water), ChipWaterColor(f.water),
+                    chip(FishWaterChipLabel(f), ChipWaterColor(f.water),
                         [&](ImDrawList* d, ImVec2 ip, float s, ImU32 c){
                             DrawChipWaterIcon(d, ip, s, f.water, c); });
 
@@ -2382,7 +2386,7 @@ void AddonRender() {
                     chip(TimeOfDayName(f.time), ChipTimeColor(f.time),
                         [&](ImDrawList* d, ImVec2 ip, float s, ImU32 c){
                         DrawChipTimeIcon(d, ip, s, f.time, c); });
-                    chip(WaterTypeName(f.water), ChipWaterColor(f.water),
+                    chip(FishWaterChipLabel(f), ChipWaterColor(f.water),
                         [&](ImDrawList* d, ImVec2 ip, float s, ImU32 c){
                             DrawChipWaterIcon(d, ip, s, f.water, c); });
 
