@@ -653,10 +653,13 @@ static bool IsFavourite(const char* name) {
 }
 
 static void ToggleFavourite(const char* name) {
-    std::lock_guard<std::mutex> lk(g_FavMutex);
-    auto it = std::find(g_Favourites.begin(), g_Favourites.end(), name);
-    if (it != g_Favourites.end()) g_Favourites.erase(it);
-    else                          g_Favourites.push_back(name);
+    {
+        std::lock_guard<std::mutex> lk(g_FavMutex);
+        auto it = std::find(g_Favourites.begin(), g_Favourites.end(), name);
+        if (it != g_Favourites.end()) g_Favourites.erase(it);
+        else                          g_Favourites.push_back(name);
+    }
+    SaveSettings();
 }
 
 // ---------------------------------------------------------------------------
