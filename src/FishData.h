@@ -77,9 +77,10 @@ struct FishingHole {
 
 struct FishingCollection {
     const char* name;
-    uint32_t    achievementId;
+    uint32_t    achievementId;       // base "X Fisher" (catch each fish once)
     uint8_t     totalFish;
     const char* iconUrl;
+    uint32_t    avidAchievementId;   // repeatable "Avid X Fisher" (0 if none exists)
 };
 
 extern const char*             BAIT_NAMES[];

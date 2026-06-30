@@ -18,17 +18,27 @@ struct AlertAchPayload {
 void AchievementTracker::Init(AddonAPI_t* api) {
     m_api = api;
 
-    // Seed collections from COLLECTION_TABLE
+    // Seed collections from COLLECTION_TABLE — both the base "X Fisher" and
+    // its repeatable "Avid X Fisher" counterpart, since once the base is
+    // fully done we fall back to tracking the Avid cycle's progress instead.
     {
         std::lock_guard<std::mutex> lk(m_mu);
         for (int i = 0; i < COLLECTION_COUNT; i++) {
             const FishingCollection& c = COLLECTION_TABLE[i];
             if (c.achievementId == 0) continue;
             CollectionState& st = m_collections[c.achievementId];
-            st.totalFish   = c.totalFish;
-            st.caughtCount = 0;
-            st.done        = false;
-            st.bitsKnown   = false;
+            st.totalFish        = c.totalFish;
+            st.caughtCount      = 0;
+            st.done             = false;
+            st.bitsKnown        = false;
+            st.avidAchievementId = c.avidAchievementId;
+
+            if (c.avidAchievementId == 0) continue;
+            CollectionState& avidSt = m_collections[c.avidAchievementId];
+            avidSt.totalFish   = c.totalFish;
+            avidSt.caughtCount = 0;
+            avidSt.done        = false;
+            avidSt.bitsKnown   = false;
         }
     }
 
@@ -77,25 +87,35 @@ void AchievementTracker::FlushPendingQuery() {
 // IsCaught
 // ---------------------------------------------------------------------------
 
+// Must be called while holding m_mu. Returns the base collection's state,
+// unless the base is fully done, in which case progress on the repeatable
+// Avid cycle (if known) is more useful and is returned instead.
+const CollectionState* AchievementTracker::ResolveEffectiveLocked(uint32_t baseAchievementId) const {
+    auto it = m_collections.find(baseAchievementId);
+    if (it == m_collections.end()) return nullptr;
+    const CollectionState& base = it->second;
+    if (!base.done || base.avidAchievementId == 0) return &base;
+
+    auto avidIt = m_collections.find(base.avidAchievementId);
+    if (avidIt == m_collections.end() || !avidIt->second.bitsKnown) return &base;
+    return &avidIt->second;
+}
+
 bool AchievementTracker::IsCaught(int fishIdx) const {
     if (fishIdx < 0 || fishIdx >= FISH_COUNT) return false;
     const Fish& f = FISH_TABLE[fishIdx];
     if (f.achievementId == 0) return false;
+    if (f.bitIndex >= 64) return false;
 
     std::lock_guard<std::mutex> lk(m_mu);
-    auto it = m_collections.find(f.achievementId);
-    if (it == m_collections.end()) return false;
-    const CollectionState& st = it->second;
-    if (!st.bitsKnown) return false;
-    if (f.bitIndex >= 64) return false;
-    return st.caughtBits[f.bitIndex];
+    const CollectionState* st = ResolveEffectiveLocked(f.achievementId);
+    if (!st || !st->bitsKnown) return false;
+    return st->caughtBits[f.bitIndex];
 }
 
 const CollectionState* AchievementTracker::GetCollection(uint32_t achievementId) const {
     std::lock_guard<std::mutex> lk(m_mu);
-    auto it = m_collections.find(achievementId);
-    if (it == m_collections.end()) return nullptr;
-    return &it->second;
+    return ResolveEffectiveLocked(achievementId);
 }
 
 // ---------------------------------------------------------------------------
@@ -111,10 +131,13 @@ void AchievementTracker::QueryAllCollections() {
     strncpy(req.response_event, EV_CAST_AWAY_ACH_RESPONSE, sizeof(req.response_event) - 1);
     req.id_count = 0;
 
-    // Collect all non-zero achievement IDs
+    // Collect all non-zero achievement IDs — base and Avid counterpart
     for (int i = 0; i < COLLECTION_COUNT; i++) {
         if (COLLECTION_TABLE[i].achievementId != 0 && req.id_count < 200) {
             req.ids[req.id_count++] = COLLECTION_TABLE[i].achievementId;
+        }
+        if (COLLECTION_TABLE[i].avidAchievementId != 0 && req.id_count < 200) {
+            req.ids[req.id_count++] = COLLECTION_TABLE[i].avidAchievementId;
         }
     }
 
@@ -177,6 +200,11 @@ void AchievementTracker::OnHoardAchResponse(void* args) {
                 if (e.bits[b] < 64) {
                     st.caughtBits[e.bits[b]] = true;
                 }
+            }
+            // GW2 API omits in-progress bits once an achievement is fully
+            // done, so e.bits is empty here even though everything is caught.
+            if (e.done) {
+                for (int b = 0; b < st.totalFish && b < 64; b++) st.caughtBits[b] = true;
             }
             st.bitsKnown = true;
 

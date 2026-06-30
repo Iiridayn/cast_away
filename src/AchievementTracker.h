@@ -12,6 +12,7 @@ struct CollectionState {
     bool     done        = false;
     bool     bitsKnown   = false;
     bool     caughtBits[64] = {};
+    uint32_t avidAchievementId = 0; // set on base entries only; 0 on Avid entries / if none exists
 };
 
 class AchievementTracker {
@@ -30,6 +31,7 @@ public:
 
 private:
     void QueryAllCollections();
+    const CollectionState* ResolveEffectiveLocked(uint32_t baseAchievementId) const;
     static void OnHoardPong(void* args);
     static void OnHoardDataUpdated(void* args);
     static void OnHoardAchResponse(void* args);
