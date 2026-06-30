@@ -665,6 +665,54 @@ static void ToggleFavourite(const char* name) {
 // ---------------------------------------------------------------------------
 // Day/Night timeline bar
 // ---------------------------------------------------------------------------
+
+// Gradient colour stops: {tyrianHour, R, G, B}. Two variants matching the
+// two phase-boundary sets used by GetCurrentTimeOfDayForMap/ForFish:
+//   Tyria:  00:00-05:00 Night, 05:00-06:00 Dawn, 06:00-20:00 Day, 20:00-21:00 Dusk, 21:00-24:00 Night
+//   Cantha: 00:00-07:00 Night, 07:00-08:00 Dawn, 08:00-19:00 Day, 19:00-20:00 Dusk, 20:00-24:00 Night
+struct DayNightStop { float h; uint8_t r, g, b; };
+static const DayNightStop TYRIA_STOPS[] = {
+    { 0.00f, 15,  15,  50  },   // deep night
+    { 5.00f, 25,  20,  70  },   // night, approaching dawn
+    { 5.50f, 196, 107, 26  },   // mid-dawn (orange)
+    { 6.00f, 110, 180, 230 },   // day begins
+    {12.00f, 180, 220, 255 },   // noon
+    {18.00f, 130, 200, 230 },   // late afternoon
+    {20.00f, 110, 180, 230 },   // day end
+    {20.50f, 212, 112, 42  },   // mid-dusk (orange)
+    {21.00f, 30,  20,  70  },   // night begins
+    {24.00f, 15,  15,  50  },   // deep night
+};
+static const int TYRIA_STOPS_COUNT = (int)(sizeof(TYRIA_STOPS) / sizeof(TYRIA_STOPS[0]));
+
+static const DayNightStop CANTHA_STOPS[] = {
+    { 0.00f, 15,  15,  50  },   // deep night
+    { 7.00f, 25,  20,  70  },   // night, approaching dawn
+    { 7.50f, 196, 107, 26  },   // mid-dawn (orange)
+    { 8.00f, 110, 180, 230 },   // day begins
+    {13.00f, 180, 220, 255 },   // midday
+    {17.00f, 130, 200, 230 },   // late afternoon
+    {19.00f, 110, 180, 230 },   // day end
+    {19.50f, 212, 112, 42  },   // mid-dusk (orange)
+    {20.00f, 30,  20,  70  },   // night begins
+    {24.00f, 15,  15,  50  },   // deep night
+};
+static const int CANTHA_STOPS_COUNT = (int)(sizeof(CANTHA_STOPS) / sizeof(CANTHA_STOPS[0]));
+
+static ImU32 DayNightColorAt(float h, const DayNightStop* stops, int count) {
+    h = fmodf(h + 24.f * 100.f, 24.f); // normalise into [0,24)
+    for (int i = 0; i < count - 1; i++) {
+        if (h >= stops[i].h && h < stops[i+1].h) {
+            float t = (h - stops[i].h) / (stops[i+1].h - stops[i].h);
+            uint8_t r = (uint8_t)(stops[i].r + (stops[i+1].r - stops[i].r) * t);
+            uint8_t g = (uint8_t)(stops[i].g + (stops[i+1].g - stops[i].g) * t);
+            uint8_t b = (uint8_t)(stops[i].b + (stops[i+1].b - stops[i].b) * t);
+            return IM_COL32(r, g, b, 255);
+        }
+    }
+    return IM_COL32(stops[count-1].r, stops[count-1].g, stops[count-1].b, 255);
+}
+
 static void RenderDayNightBar(float windowWidth) {
     static const float BAR_H   = 26.f;
     static const float TICK_H  = 12.f;
@@ -673,44 +721,21 @@ static void RenderDayNightBar(float windowWidth) {
     ImDrawList* dl     = ImGui::GetWindowDrawList();
     ImVec2      origin = ImGui::GetCursorScreenPos();
 
-    // Gradient colour stops: {tyrianHour, R, G, B}. Matches GW2 phase boundaries:
-    //   00:00–05:00 Night, 05:00–06:00 Dawn, 06:00–20:00 Day, 20:00–21:00 Dusk, 21:00–24:00 Night
-    struct Stop { float h; uint8_t r, g, b; };
-    static const Stop stops[] = {
-        { 0.00f, 15,  15,  50  },   // deep night
-        { 5.00f, 25,  20,  70  },   // night, approaching dawn
-        { 5.50f, 196, 107, 26  },   // mid-dawn (orange)
-        { 6.00f, 110, 180, 230 },   // day begins
-        {12.00f, 180, 220, 255 },   // noon
-        {18.00f, 130, 200, 230 },   // late afternoon
-        {20.00f, 110, 180, 230 },   // day end
-        {20.50f, 212, 112, 42  },   // mid-dusk (orange)
-        {21.00f, 30,  20,  70  },   // night begins
-        {24.00f, 15,  15,  50  },   // deep night
-    };
-    static const int NSTOPS = (int)(sizeof(stops) / sizeof(stops[0]));
+    // Resolve the cycle (Tyria vs Cantha vs Draconis Mons' fixed time) for
+    // the player's current map.
+    uint32_t mapId = (uint32_t)g_PlayerMapId;
+    const DayNightStop* stops  = MapUsesCanthaCycle(mapId) ? CANTHA_STOPS : TYRIA_STOPS;
+    const int           nstops = MapUsesCanthaCycle(mapId) ? CANTHA_STOPS_COUNT : TYRIA_STOPS_COUNT;
 
     // Current time / phase
-    float tyrHour = GetTyrianHour();
-    TimeOfDay phase = GetCurrentTimeOfDay();
-    uint32_t secLeft = SecondsUntilNextSlot();
+    float tyrHour = GetTyrianHourForMap(mapId);
+    TimeOfDay phase = GetCurrentTimeOfDayForMap(mapId);
+    uint32_t secLeft = SecondsUntilNextSlotForMap(mapId);
 
     // Scrolled view: bar shows [now - 12h, now + 12h], with "now" pinned to the centre.
     // Each pixel column is sampled from the gradient at its corresponding Tyrian hour.
     const float leftH = tyrHour - 12.f;
-    auto colorAt = [&](float h) -> ImU32 {
-        h = fmodf(h + 24.f * 100.f, 24.f); // normalise into [0,24)
-        for (int i = 0; i < NSTOPS - 1; i++) {
-            if (h >= stops[i].h && h < stops[i+1].h) {
-                float t = (h - stops[i].h) / (stops[i+1].h - stops[i].h);
-                uint8_t r = (uint8_t)(stops[i].r + (stops[i+1].r - stops[i].r) * t);
-                uint8_t g = (uint8_t)(stops[i].g + (stops[i+1].g - stops[i].g) * t);
-                uint8_t b = (uint8_t)(stops[i].b + (stops[i+1].b - stops[i].b) * t);
-                return IM_COL32(r, g, b, 255);
-            }
-        }
-        return IM_COL32(stops[NSTOPS-1].r, stops[NSTOPS-1].g, stops[NSTOPS-1].b, 255);
-    };
+    auto colorAt = [&](float h) -> ImU32 { return DayNightColorAt(h, stops, nstops); };
     const int STRIPS = 96;
     for (int s = 0; s < STRIPS; s++) {
         float t0 = (float)s       / (float)STRIPS;
@@ -737,8 +762,11 @@ static void RenderDayNightBar(float windowWidth) {
         (phase == TimeOfDay::Day)   ? "Day"   :
         (phase == TimeOfDay::Night) ? "Night" :
         (phase == TimeOfDay::Dawn)  ? "Dawn"  : "Dusk";
-    snprintf(timeText, sizeof(timeText), "%s - next in %um %02us",
-             phaseName, secLeft/60, secLeft%60);
+    if (mapId == DRACONIS_MONS_MAP_ID)
+        snprintf(timeText, sizeof(timeText), "%s (fixed)", phaseName);
+    else
+        snprintf(timeText, sizeof(timeText), "%s - next in %um %02us",
+                 phaseName, secLeft/60, secLeft%60);
     ImVec2 tsz = ImGui::CalcTextSize(timeText);
     ImVec2 tp  = {origin.x + (windowWidth - tsz.x)*0.5f,
                   origin.y + (BAR_H - tsz.y)*0.5f};
@@ -826,37 +854,14 @@ static void RenderOverlay() {
         ImDrawList* dl     = ImGui::GetWindowDrawList();
         ImVec2      origin = ImGui::GetCursorScreenPos();
 
-        struct Stop { float h; uint8_t r, g, b; };
-        static const Stop stops[] = {
-            { 0.00f, 15,  15,  50  },
-            { 5.00f, 25,  20,  70  },
-            { 5.50f, 196, 107, 26  },
-            { 6.00f, 110, 180, 230 },
-            {12.00f, 180, 220, 255 },
-            {18.00f, 130, 200, 230 },
-            {20.00f, 110, 180, 230 },
-            {20.50f, 212, 112, 42  },
-            {21.00f, 30,  20,  70  },
-            {24.00f, 15,  15,  50  },
-        };
-        static const int NSTOPS = (int)(sizeof(stops) / sizeof(stops[0]));
+        uint32_t mapId = (uint32_t)g_PlayerMapId;
+        const DayNightStop* stops  = MapUsesCanthaCycle(mapId) ? CANTHA_STOPS : TYRIA_STOPS;
+        const int           nstops = MapUsesCanthaCycle(mapId) ? CANTHA_STOPS_COUNT : TYRIA_STOPS_COUNT;
 
-        float tyrHour = GetTyrianHour();
+        float tyrHour = GetTyrianHourForMap(mapId);
         float leftH   = tyrHour - 12.f;
 
-        auto colorAt = [&](float h) -> ImU32 {
-            h = fmodf(h + 24.f * 100.f, 24.f);
-            for (int i = 0; i < NSTOPS - 1; i++) {
-                if (h >= stops[i].h && h < stops[i+1].h) {
-                    float t = (h - stops[i].h) / (stops[i+1].h - stops[i].h);
-                    uint8_t r = (uint8_t)(stops[i].r + (stops[i+1].r - stops[i].r) * t);
-                    uint8_t g = (uint8_t)(stops[i].g + (stops[i+1].g - stops[i].g) * t);
-                    uint8_t b = (uint8_t)(stops[i].b + (stops[i+1].b - stops[i].b) * t);
-                    return IM_COL32(r, g, b, 255);
-                }
-            }
-            return IM_COL32(stops[NSTOPS-1].r, stops[NSTOPS-1].g, stops[NSTOPS-1].b, 255);
-        };
+        auto colorAt = [&](float h) -> ImU32 { return DayNightColorAt(h, stops, nstops); };
 
         // Gradient bar
         const int STRIPS = 64;
@@ -879,8 +884,8 @@ static void RenderOverlay() {
                     IM_COL32(0, 0, 0, 120), 1.f);
 
         // Phase label (left) and countdown (right) overlaid on bar
-        TimeOfDay phase   = GetCurrentTimeOfDay();
-        uint32_t  secLeft = SecondsUntilNextSlot();
+        TimeOfDay phase   = GetCurrentTimeOfDayForMap(mapId);
+        uint32_t  secLeft = SecondsUntilNextSlotForMap(mapId);
         char leftLbl[32];
         {
             uint32_t hh = (uint32_t)tyrHour;
@@ -888,8 +893,11 @@ static void RenderOverlay() {
             snprintf(leftLbl, sizeof(leftLbl), "%02u:%02u %s", hh, mm, TimeOfDayName(phase));
         }
         char rightLbl[32];
-        snprintf(rightLbl, sizeof(rightLbl), "%s %um%02us",
-                 TimeOfDayName(GetNextPhase()), secLeft / 60, secLeft % 60);
+        if (mapId == DRACONIS_MONS_MAP_ID)
+            snprintf(rightLbl, sizeof(rightLbl), "fixed");
+        else
+            snprintf(rightLbl, sizeof(rightLbl), "%s %um%02us",
+                     TimeOfDayName(GetNextPhaseFrom(phase)), secLeft / 60, secLeft % 60);
 
         dl->AddText({origin.x + 3.f, origin.y + 3.f},
                     IM_COL32(255, 255, 255, 220), leftLbl);

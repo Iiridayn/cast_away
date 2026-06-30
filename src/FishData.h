@@ -176,14 +176,20 @@ inline TimeOfDay GetCurrentTimeOfDay() {
     return TimeOfDay::Night;                         // 21:00–24:00 Tyrian
 }
 
-inline TimeOfDay GetNextPhase() {
-    switch (GetCurrentTimeOfDay()) {
+// Phase rotation order is identical across cycles (Night→Dawn→Day→Dusk→Night);
+// only the boundary hours differ, so this just needs the current phase.
+inline TimeOfDay GetNextPhaseFrom(TimeOfDay current) {
+    switch (current) {
         case TimeOfDay::Night: return TimeOfDay::Dawn;
         case TimeOfDay::Dawn:  return TimeOfDay::Day;
         case TimeOfDay::Day:   return TimeOfDay::Dusk;
         case TimeOfDay::Dusk:  return TimeOfDay::Night;
         default:               return TimeOfDay::Day;
     }
+}
+
+inline TimeOfDay GetNextPhase() {
+    return GetNextPhaseFrom(GetCurrentTimeOfDay());
 }
 
 inline uint32_t SecondsUntilNextSlot() {
@@ -284,20 +290,43 @@ static const uint32_t CANTHA_CYCLE_MAPS[] = {
 };
 static const int CANTHA_CYCLE_MAP_COUNT =
     (int)(sizeof(CANTHA_CYCLE_MAPS) / sizeof(CANTHA_CYCLE_MAPS[0]));
+// Permanently fixed at 09:00 Tyrian time — not on any cycle at all.
 static const uint32_t DRACONIS_MONS_MAP_ID = 1195;
+static const float    DRACONIS_MONS_FIXED_HOUR = 9.0f;
+
+inline bool MapUsesCanthaCycle(uint32_t mapId) {
+    for (int i = 0; i < CANTHA_CYCLE_MAP_COUNT; i++)
+        if (CANTHA_CYCLE_MAPS[i] == mapId) return true;
+    return false;
+}
 
 inline TimeOfDay GetCurrentTimeOfDayForMap(uint32_t mapId) {
     if (mapId == DRACONIS_MONS_MAP_ID) return TimeOfDay::Day;
-    for (int i = 0; i < CANTHA_CYCLE_MAP_COUNT; i++) {
-        if (CANTHA_CYCLE_MAPS[i] != mapId) continue;
-        uint32_t s = GetTyrianSeconds();
-        if (s < CA_DAWN_START)  return TimeOfDay::Night;
-        if (s < CA_DAY_START)   return TimeOfDay::Dawn;
-        if (s < CA_DUSK_START)  return TimeOfDay::Day;
-        if (s < CA_NIGHT_START) return TimeOfDay::Dusk;
-        return TimeOfDay::Night;
-    }
-    return GetCurrentTimeOfDay();
+    if (!MapUsesCanthaCycle(mapId)) return GetCurrentTimeOfDay();
+    uint32_t s = GetTyrianSeconds();
+    if (s < CA_DAWN_START)  return TimeOfDay::Night;
+    if (s < CA_DAY_START)   return TimeOfDay::Dawn;
+    if (s < CA_DUSK_START)  return TimeOfDay::Day;
+    if (s < CA_NIGHT_START) return TimeOfDay::Dusk;
+    return TimeOfDay::Night;
+}
+
+// Raw Tyrian clock hour is the same global value everywhere except Draconis
+// Mons, which is frozen and never reflects the real clock at all.
+inline float GetTyrianHourForMap(uint32_t mapId) {
+    if (mapId == DRACONIS_MONS_MAP_ID) return DRACONIS_MONS_FIXED_HOUR;
+    return GetTyrianHour();
+}
+
+inline uint32_t SecondsUntilNextSlotForMap(uint32_t mapId) {
+    if (mapId == DRACONIS_MONS_MAP_ID) return 0; // never changes; callers should special-case display
+    if (!MapUsesCanthaCycle(mapId)) return SecondsUntilNextSlot();
+    uint32_t s = GetTyrianSeconds();
+    if (s < CA_DAWN_START)  return CA_DAWN_START  - s;
+    if (s < CA_DAY_START)   return CA_DAY_START   - s;
+    if (s < CA_DUSK_START)  return CA_DUSK_START  - s;
+    if (s < CA_NIGHT_START) return CA_NIGHT_START - s;
+    return (TYRIAN_CYCLE - s) + CA_DAWN_START;
 }
 
 #define CAST_AWAY_ADDON_NAME "Cast Away"
