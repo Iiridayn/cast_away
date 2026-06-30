@@ -625,7 +625,7 @@ static bool FishMatchesFilter(int fishIdx) {
 
     // Time filter
     if (g_ShowCurrentOnly) {
-        TimeOfDay cur = GetCurrentTimeOfDay();
+        TimeOfDay cur = GetCurrentTimeOfDayForFish(f);
         if (f.time != TimeOfDay::Any && f.time != cur) return false;
     } else if (g_FilterTime > 0 && f.time != TimeOfDay::Any && (int)f.time != g_FilterTime) {
         return false;
@@ -1084,7 +1084,7 @@ static void CheckTimeWindowNotifications() {
         for (auto& n : favsCopy) if (n == f.name) { fav = true; break; }
         if (!fav) continue;
 
-        uint32_t secs = SecondsUntilPhase(f.time);
+        uint32_t secs = SecondsUntilPhaseForFish(f, f.time);
         // secs == 0 means the phase just started; skip (already-in-window rule)
         if (secs == 0 || secs > (uint32_t)g_NotifyLeadSeconds) continue;
 
@@ -1121,7 +1121,7 @@ static void CheckTimeWindowNotifications() {
 // ---------------------------------------------------------------------------
 static void CheckNearbyHoles(int mapId, float gx, float gz) {
     if (mapId == 0) return;
-    TimeOfDay curTime = GetCurrentTimeOfDay();
+    TimeOfDay curTime = GetCurrentTimeOfDayForMap((uint32_t)mapId);
 
     for (int i = 0; i < HOLE_COUNT; i++) {
         const FishingHole& h = HOLE_TABLE[i];
@@ -1663,7 +1663,7 @@ static void RenderFavNotification() {
 
             // Text
             float tx = ix + ICON_SZ + PAD;
-            uint32_t secs = SecondsUntilPhase(f.time);
+            uint32_t secs = SecondsUntilPhaseForFish(f, f.time);
             dl->AddText({tx, p.y+PAD}, rarityCol, f.name);
             dl->AddText({tx, p.y+PAD+lineH2+2.f}, IM_COL32(130,130,130,255),
                         f.map ? f.map : "?");

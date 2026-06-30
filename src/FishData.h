@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <cstring>
 #include "HoleLocations.h"
 #include <ctime>
 
@@ -207,6 +208,96 @@ inline uint32_t SecondsUntilPhase(TimeOfDay phase) {
         default:               return 0;
     }
     return (start > s) ? (start - s) : (TYRIAN_CYCLE - s + start);
+}
+
+// ---------------------------------------------------------------------------
+// Cantha cycle — End of Dragons and Visions of Eternity (Castora) maps run a
+// different day/night cycle than core Tyria: day and night are equal length,
+// offset from the core cycle's boundaries. Same 7200-second cycle length and
+// epoch, just different phase cutoffs.
+//   Night 20:00–07:00, Dawn 07:00–08:00, Day 08:00–19:00, Dusk 19:00–20:00
+// As cycle-seconds:
+//   0    – 2100 Night (early)
+//   2100 – 2400 Dawn
+//   2400 – 5700 Day
+//   5700 – 6000 Dusk
+//   6000 – 7200 Night (late)
+// ---------------------------------------------------------------------------
+
+static const uint32_t CA_DAWN_START  = 2100;
+static const uint32_t CA_DAY_START   = 2400;
+static const uint32_t CA_DUSK_START  = 5700;
+static const uint32_t CA_NIGHT_START = 6000;
+
+inline bool RegionUsesCanthaCycle(const char* region) {
+    if (!region) return false;
+    return strcmp(region, "End of Dragons") == 0 || strcmp(region, "Visions of Eternity") == 0;
+}
+
+// Draconis Mons (the Volcanic-hole half of "Ring of Fire Fisher") doesn't
+// follow any cycle — it's permanently fixed at 09:00 Tyrian time (Day).
+inline bool FishUsesCanthaCycle(const Fish& f) {
+    return RegionUsesCanthaCycle(f.region);
+}
+
+inline TimeOfDay GetCurrentTimeOfDayForFish(const Fish& f) {
+    if (f.holeType == HoleWater::Volcanic) return TimeOfDay::Day;
+    uint32_t s = GetTyrianSeconds();
+    if (FishUsesCanthaCycle(f)) {
+        if (s < CA_DAWN_START)  return TimeOfDay::Night;
+        if (s < CA_DAY_START)   return TimeOfDay::Dawn;
+        if (s < CA_DUSK_START)  return TimeOfDay::Day;
+        if (s < CA_NIGHT_START) return TimeOfDay::Dusk;
+        return TimeOfDay::Night;
+    }
+    return GetCurrentTimeOfDay();
+}
+
+inline uint32_t SecondsUntilPhaseForFish(const Fish& f, TimeOfDay phase) {
+    if (phase == TimeOfDay::Any) return 0;
+    if (f.holeType == HoleWater::Volcanic)
+        return (phase == TimeOfDay::Day) ? 0 : TYRIAN_CYCLE; // Draconis Mons: always/never
+    if (!FishUsesCanthaCycle(f)) return SecondsUntilPhase(phase);
+
+    uint32_t s = GetTyrianSeconds();
+    uint32_t start = 0;
+    switch (phase) {
+        case TimeOfDay::Dawn:  start = CA_DAWN_START;  break;
+        case TimeOfDay::Day:   start = CA_DAY_START;   break;
+        case TimeOfDay::Dusk:  start = CA_DUSK_START;  break;
+        case TimeOfDay::Night: start = CA_NIGHT_START; break;
+        default:                return 0;
+    }
+    return (start > s) ? (start - s) : (TYRIAN_CYCLE - s + start);
+}
+
+// Map IDs for the regions that use the Cantha cycle, for callers that only
+// have a MumbleLink map ID (not a specific Fish) to work with.
+static const uint32_t CANTHA_CYCLE_MAPS[] = {
+    1442, // Seitung Province
+    1438, // New Kaineng City
+    1452, // The Echovald Wilds
+    1422, // Dragon's End
+    1593, // Starlit Weald
+    1595, // Shipwreck Strand
+    1622, // Eternity's Garden
+};
+static const int CANTHA_CYCLE_MAP_COUNT =
+    (int)(sizeof(CANTHA_CYCLE_MAPS) / sizeof(CANTHA_CYCLE_MAPS[0]));
+static const uint32_t DRACONIS_MONS_MAP_ID = 1195;
+
+inline TimeOfDay GetCurrentTimeOfDayForMap(uint32_t mapId) {
+    if (mapId == DRACONIS_MONS_MAP_ID) return TimeOfDay::Day;
+    for (int i = 0; i < CANTHA_CYCLE_MAP_COUNT; i++) {
+        if (CANTHA_CYCLE_MAPS[i] != mapId) continue;
+        uint32_t s = GetTyrianSeconds();
+        if (s < CA_DAWN_START)  return TimeOfDay::Night;
+        if (s < CA_DAY_START)   return TimeOfDay::Dawn;
+        if (s < CA_DUSK_START)  return TimeOfDay::Day;
+        if (s < CA_NIGHT_START) return TimeOfDay::Dusk;
+        return TimeOfDay::Night;
+    }
+    return GetCurrentTimeOfDay();
 }
 
 #define CAST_AWAY_ADDON_NAME "Cast Away"
