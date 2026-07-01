@@ -593,6 +593,10 @@ static void LoadSettings() {
 static bool FishMatchesFilter(int fishIdx) {
     const Fish& f = FISH_TABLE[fishIdx];
 
+    // Fish with no achievement tracking (e.g. heart-vendor-only catches) aren't
+    // useful for collection completion, which is the whole point of this list.
+    if (f.achievementId == 0) return false;
+
     // Name + collection search: substring first, subsequence-fuzzy as fallback
     if (g_SearchBuf[0]) {
         auto tolower_s = [](std::string s) {
@@ -1086,6 +1090,7 @@ static void CheckTimeWindowNotifications() {
     std::vector<FavFishEntry> triggered;
     for (int i = 0; i < FISH_COUNT; i++) {
         const Fish& f = FISH_TABLE[i];
+        if (f.achievementId == 0) continue;
         if (f.time == TimeOfDay::Any) continue;
 
         bool fav = false;
@@ -1147,6 +1152,7 @@ static void CheckNearbyHoles(int mapId, float gx, float gz) {
             uint16_t fid = h.fishIds[fi];
             if (fid >= (uint16_t)FISH_COUNT) continue;
             const Fish& ff = FISH_TABLE[fid];
+            if (ff.achievementId == 0) continue;
             if (ff.time == TimeOfDay::Any || ff.time == curTime)
                 catchable.push_back(&ff);
         }
@@ -2321,6 +2327,7 @@ void AddonRender() {
 
                 for (int i = 0; i < FISH_COUNT; i++) {
                     const Fish& f = FISH_TABLE[i];
+                    if (f.achievementId == 0) continue;
                     if (!IsFavourite(f.name)) continue;
 
                     if (fcol == 1) ImGui::SameLine(fCardW + fGap);
