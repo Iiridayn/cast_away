@@ -2540,7 +2540,7 @@ void AddonLoad(AddonAPI_t* aApi) {
     std::string dataDir = std::string(APIDefs->Paths_GetAddonDirectory("CastAway"));
     std::filesystem::create_directories(dataDir);
 
-    if (APIDefs->Fonts_AddFromFile && g_hSelf) {
+    if (false && APIDefs->Fonts_AddFromFile && g_hSelf) {
         auto extractRes = [&](int id, const std::string& outPath) -> bool {
             if (std::filesystem::exists(outPath)) return true;
             HRSRC h = FindResourceA(g_hSelf, MAKEINTRESOURCEA(id), (LPCSTR)RT_RCDATA);
