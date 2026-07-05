@@ -24,19 +24,35 @@ using json = nlohmann::json;
 // entry; everything else uses the single mapId from HOLE_TABLE directly.
 namespace {
     struct RegionMaps { const char* name; const uint32_t* ids; int count; };
-    static const uint32_t KRYTA_MAPS[]    = { 15, 17, 19, 20, 21, 50 }; // Queensdale, Harathi, Kessex, Gendarran, Bloodtide, Lion's Arch
-    static const uint32_t ASCALON_MAPS[]  = { 25, 27, 28, 29, 30, 31, 32 };
-    static const uint32_t SHIVERPEAK_MAPS[]= { 23, 24, 26, 27, 28, 30, 31, 32 }; // Wayfarer/Snowden/etc — overlap is fine, best-match wins
-    static const uint32_t MAGUUMA_MAPS[]  = { 34, 35, 39, 53, 54, 873 };
-    static const uint32_t ORR_MAPS[]      = { 50, 51, 62, 65 };
+    static const uint32_t KRYTA_MAPS[]    = { 15, 17, 23, 24, 50, 73, 873, 1185 }; // Queensdale, Harathi, Kessex, Gendarran, Lion's Arch, Bloodtide, Southsun, Lake Doric
+    static const uint32_t ASCALON_MAPS[]  = { 19, 20, 21, 22, 25, 32, 1330 }; // Plains of Ashford, Blazeridge, Fields of Ruin, Fireheart, Iron Marches, Diessa, Grothmar Valley
+    static const uint32_t SHIVERPEAK_MAPS[]= { 26, 27, 28, 29, 30, 31, 1371, 1178, 1310 }; // Dredgehaunt, Lornar's, Wayfarer, Timberline, Frostgorge, Snowden, Drizzlewood, Bitterfrost Frontier, Thunderhead Peaks
+    static const uint32_t MAGUUMA_MAPS[]  = { 34, 35, 39, 53, 54, 139, 1045, 1121, 1124 }; // ..., Rata Sum, Tangled Depths, Gilded Hollow, Lost Precipice (guild halls)
+    static const uint32_t ORR_MAPS[]      = { 51, 62, 65, 1203 }; // Straits of Devastation, Cursed Shore, Malchor's Leap, Siren's Landing
     static const uint32_t CASTORA_MAPS[]  = { 1593, 1595, 1622 }; // Starlit Weald, Shipwreck Strand, Eternity's Garden
+    static const uint32_t RING_OF_FIRE_MAPS[] = { 1195, 1175 }; // Draconis Mons, Ember Bay
+    static const uint32_t HORN_OF_MAGUUMA_MAPS[] = { 1510, 1517, 1526, 1509 }; // Skywatch Archipelago, Amnytas, Inner Nayos, The Wizard's Tower
+    static const uint32_t JANTHIR_MAPS[]  = { 1550, 1554 }; // Lowland Shore, Janthir Syntri
+    static const uint32_t DESERT_ISLES_MAPS[] = { 1263, 1271, 1317 }; // Domain of Istan, Sandswept Isles, Dragonfall
+    static const uint32_t ECHOVALD_MAPS[] = { 1452, 1428 }; // The Echovald Wilds, Arborstone (Deep Fishing Hole also drops Echovald fish)
+    static const uint32_t SEITUNG_MAPS[]  = { 1442, 1462, 1465 }; // Seitung Province, Isle of Reflection (guild hall), Thousand Seas Pavilion (lounge — Mysterious Waters Fish drops Seitung fish too)
+    static const uint32_t CRYSTAL_DESERT_MAPS[] = { 1210, 1211, 1226, 1228, 1248, 1288, 1232 }; // Crystal Oasis, Desert Highlands, The Desolation, Elon Riverlands, Domain of Vabbi, Domain of Kourna, Windswept Haven (guild hall)
+    static const uint32_t KAINENG_MAPS[]  = { 1438, 1465 }; // New Kaineng City, Thousand Seas Pavilion (lounge — Mysterious Waters Fish drops Kaineng fish too)
     static const RegionMaps REGION_MAPS[] = {
-        { "Kryta",                KRYTA_MAPS,     6 },
+        { "Kryta",                KRYTA_MAPS,     8 },
         { "Ascalon",              ASCALON_MAPS,   7 },
-        { "Shiverpeak Mountains", SHIVERPEAK_MAPS,8 },
-        { "Maguuma Jungle",       MAGUUMA_MAPS,   6 },
+        { "Shiverpeak Mountains", SHIVERPEAK_MAPS,9 },
+        { "Maguuma Jungle",       MAGUUMA_MAPS,   9 },
         { "Ruins of Orr",         ORR_MAPS,       4 },
         { "Castora",              CASTORA_MAPS,   3 },
+        { "Ring of Fire",         RING_OF_FIRE_MAPS,     2 },
+        { "Horn of Maguuma",      HORN_OF_MAGUUMA_MAPS,  4 },
+        { "Janthir",              JANTHIR_MAPS,          2 },
+        { "Desert Isles",         DESERT_ISLES_MAPS,     3 },
+        { "Crystal Desert",       CRYSTAL_DESERT_MAPS,   7 },
+        { "The Echovald Wilds",   ECHOVALD_MAPS,         2 },
+        { "Seitung Province",     SEITUNG_MAPS,          3 },
+        { "New Kaineng City",     KAINENG_MAPS,          2 },
     };
 
     // Returns true if mapId belongs to the named region (multi-map regions only).
@@ -1180,4 +1196,62 @@ bool MapPanel::IsMapInRegion(uint32_t mapId, const char* region) {
         if (h.map && strcmp(h.map, region) == 0 && h.mapId == mapId) return true;
     }
     return false;
+}
+
+bool MapPanel::MapHasHoleType(uint32_t mapId, HoleWater want) {
+    if (want == HoleWater::Any) return true;
+    bool anyDataForMap = false;
+    for (int i = 0; i < HOLE_LOCATION_COUNT; ++i) {
+        const HoleLocation& h = HOLE_LOCATION_TABLE[i];
+        if (h.mapId != mapId) continue;
+        anyDataForMap = true;
+        if (h.water == want) return true;
+    }
+    // No marker-pack coverage at all for this map (common on newer maps like
+    // Castora/Janthir/SotO's Horn of Maguuma zones) — don't rule the fish out
+    // over a data gap; only exclude when we positively know the types present.
+    return !anyDataForMap;
+}
+
+bool MapPanel::IsKnownFishingMap(uint32_t mapId) {
+    for (int i = 0; i < HOLE_LOCATION_COUNT; ++i)
+        if (HOLE_LOCATION_TABLE[i].mapId == mapId) return true;
+    for (const auto& r : REGION_MAPS)
+        for (int i = 0; i < r.count; ++i)
+            if (r.ids[i] == mapId) return true;
+    for (int i = 0; i < HOLE_COUNT; ++i)
+        if (HOLE_TABLE[i].mapId == mapId) return true;
+    return false;
+}
+
+namespace {
+    // Confirmed via wiki catch-table cross-reference: Seahorse's own page lists
+    // Coastal/Offshore/Saltwater as its hole types; Channel Fish and Volcanic
+    // Fish's drop tables both explicitly include Saltwater Fish species.
+    // Wreckage/Shinota are excluded — no fish in FISH_TABLE requires them and
+    // they have no dedicated wiki page to confirm against.
+    bool IsSaltwaterFamily(HoleWater w) {
+        switch (w) {
+            case HoleWater::Saltwater:
+            case HoleWater::Coastal:
+            case HoleWater::Offshore:
+            case HoleWater::Shore:
+            case HoleWater::Channel:
+            case HoleWater::Volcanic:
+                return true;
+            default:
+                return false;
+        }
+    }
+}
+
+bool MapPanel::MapHasSaltwater(uint32_t mapId) {
+    bool anyDataForMap = false;
+    for (int i = 0; i < HOLE_LOCATION_COUNT; ++i) {
+        const HoleLocation& h = HOLE_LOCATION_TABLE[i];
+        if (h.mapId != mapId) continue;
+        anyDataForMap = true;
+        if (IsSaltwaterFamily(h.water)) return true;
+    }
+    return !anyDataForMap;
 }

@@ -590,6 +590,13 @@ static void LoadSettings() {
 // ---------------------------------------------------------------------------
 // Filter helpers
 // ---------------------------------------------------------------------------
+
+// Fish tagged "World" or "Saltwater" are catchable in any matching water type
+// anywhere in the game, rather than in one specific region.
+static bool IsWildcardMapFish(const Fish& f) {
+    return f.map && (!strcmp(f.map, "World") || !strcmp(f.map, "Saltwater"));
+}
+
 static bool FishMatchesFilter(int fishIdx) {
     const Fish& f = FISH_TABLE[fishIdx];
 
@@ -642,7 +649,28 @@ static bool FishMatchesFilter(int fishIdx) {
     if (g_FilterHere) {
         if (g_PlayerMapId <= 0) return false;
         if (!f.map) return false;
-        if (!MapPanel::IsMapInRegion((uint32_t)g_PlayerMapId, f.map)) return false;
+        if (IsWildcardMapFish(f)) {
+            // Fishing-less instances (Mistlock Sanctuary, Armistice Bastion) have
+            // zero hole data, which would otherwise fall through to a permissive
+            // "no data" default below — gate on real fishing content first.
+            if (!MapPanel::IsKnownFishingMap((uint32_t)g_PlayerMapId)) return false;
+            // World Class Fish drop from every hole type's catch table (Deep,
+            // Cavern, Grotto, Quarry, Channel, Volcanic, Offshore, Coastal all
+            // confirmed via wiki), so they always pass here. Saltwater fish are
+            // more specific — never present in a purely-freshwater hole's catch
+            // table — so they still require an actual saltwater map.
+            // RebuildSortedFishIndices sorts these last regardless, since a
+            // match here isn't as informative as a region-specific one.
+            if (f.water == WaterType::Saltwater &&
+                !MapPanel::MapHasSaltwater((uint32_t)g_PlayerMapId)) return false;
+        } else {
+            if (!MapPanel::IsMapInRegion((uint32_t)g_PlayerMapId, f.map)) return false;
+            // Region membership isn't enough on its own: multi-map regions mix hole
+            // types (e.g. Shiverpeak's Frostgorge Sound has no Lake holes, only
+            // Boreal/Coastal), so also require the fish's specific hole type to
+            // actually exist on the player's current map.
+            if (!MapPanel::MapHasHoleType((uint32_t)g_PlayerMapId, f.holeType)) return false;
+        }
     }
 
     // Hide caught — hide fish already caught
@@ -1531,12 +1559,20 @@ static int RarityRank(const char* r) {
 
 static void RebuildSortedFishIndices() {
     std::iota(g_SortedFishIndices.begin(), g_SortedFishIndices.end(), 0);
-    if (g_SortMode == FishSortMode::Default) return;
+    if (g_SortMode == FishSortMode::Default && !g_FilterHere) return;
 
-    std::sort(g_SortedFishIndices.begin(), g_SortedFishIndices.end(),
+    std::stable_sort(g_SortedFishIndices.begin(), g_SortedFishIndices.end(),
         [&](int a, int b) {
             const Fish& fa = FISH_TABLE[a];
             const Fish& fb = FISH_TABLE[b];
+
+            // In "Here" mode, World/Saltwater fish aren't location-specific, so
+            // push them to the end regardless of sort mode/direction.
+            if (g_FilterHere) {
+                bool wa = IsWildcardMapFish(fa), wb = IsWildcardMapFish(fb);
+                if (wa != wb) return !wa;
+            }
+
             int cmp = 0;
             switch (g_SortMode) {
                 case FishSortMode::Alphabetical:
@@ -1899,7 +1935,7 @@ void AddonRender() {
                 ImGui::EndCombo();
             }
             ImGui::SameLine();
-            ImGui::Checkbox("Here", &g_FilterHere);
+            if (ImGui::Checkbox("Here", &g_FilterHere)) g_SortDirty = true;
             ImGui::SameLine(); ImGui::TextDisabled("|"); ImGui::SameLine();
             ImGui::Checkbox("Hide caught", &g_HideCaught);
             ImGui::SameLine();
@@ -1908,6 +1944,7 @@ void AddonRender() {
                 g_FilterBait      = 0;
                 g_FilterTime      = 0;
                 g_ShowCurrentOnly = false;
+                if (g_FilterHere) g_SortDirty = true;
                 g_FilterHere      = false;
                 g_HideCaught      = false;
                 g_FilterMap.clear();

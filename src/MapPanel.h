@@ -52,6 +52,28 @@ public:
     // HOLE_TABLE (single-map regions like Seitung Province).
     static bool IsMapInRegion(uint32_t mapId, const char* region);
 
+    // Returns true if `mapId` has at least one real fishing hole of type `want`
+    // (per HOLE_LOCATION_TABLE), or if `want` is HoleWater::Any. Regions span
+    // maps with different hole types (e.g. Shiverpeak's Frostgorge Sound has no
+    // Lake holes), so IsMapInRegion alone isn't enough to confirm a fish is
+    // actually catchable on the player's specific current map.
+    static bool MapHasHoleType(uint32_t mapId, HoleWater want);
+
+    // Returns true if `mapId` has at least one recorded hole belonging to the
+    // saltwater family (Saltwater/Coastal/Offshore/Shore/Channel/Volcanic),
+    // for the "Saltwater" fish bucket — catchable on many maps, but not every
+    // map. "World" fish need no such check: they drop from every hole type.
+    static bool MapHasSaltwater(uint32_t mapId);
+
+    // Returns true if `mapId` is recognized as having any real fishing content
+    // at all (via marker-pack data, REGION_MAPS membership, or a HOLE_TABLE
+    // anchor). Fishing-less instances like Mistlock Sanctuary or Armistice
+    // Bastion have zero hole data, which would otherwise fall through
+    // MapHasHoleType/MapHasSaltwater's "no data" permissive fallback and
+    // wrongly show wildcard fish as catchable there — this gate catches that
+    // case before either function is consulted.
+    static bool IsKnownFishingMap(uint32_t mapId);
+
     void FetchAllMapBounds(); // called in background thread from Init
 
 private:

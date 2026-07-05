@@ -52,6 +52,11 @@ Output: `build/CastAway.dll`.
 
 Neither is required — Cast Away gracefully falls back to API-only data if they're missing.
 
+## Known imprecisions
+
+- **Wizard's Tower / Arborstone "Here" matches are over-broad.** These hub maps have a generic fishing hole ("Deep Tower Fish" / "Deep Fishing Hole") that only drops *some* of their region's fish, but our hole-type data doesn't yet model these newer named hole types, so "Here" currently shows the full Horn of Maguuma / Echovald Wilds fish list at both locations rather than just the subset actually catchable there.
+- **Guild halls only recognize one upgrade tier per hall.** Gilded Hollow, Lost Precipice, Windswept Haven, and Isle of Reflection each span ~5-6 map IDs (one per upgrade tier), all with the same real fishing content per the wiki, but the marker pack only covers one tier per hall. World/Saltwater "Here" matches work on the covered tier but won't show on the others. Worth adding the rest as an explicit allowlist (like Thousand Seas Pavilion) if it turns out to matter in practice.
+
 ---
 ## License
 

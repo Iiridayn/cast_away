@@ -1944,9 +1944,9 @@ const FishingHole HOLE_TABLE[] = {
       { 156, 157, 158, 159, 160, 161, 162, 163, 0, 0, 0, 0, 0, 0, 0, 0 }, 8 },
     { "Desert Fish (Crystal Desert)", "Crystal Desert", 1210U, 0.f, 0.f, 9,
       { 177, 178, 179, 180, 181, 182, 183, 184, 0, 0, 0, 0, 0, 0, 0, 0 }, 8 },
-    { "Shore Fish (Desert Isles)", "Desert Isles", 1175U, 0.f, 0.f, 10,
+    { "Shore Fish (Desert Isles)", "Desert Isles", 1263U, 0.f, 0.f, 10, // Domain of Istan
       { 198, 199, 200, 201, 202, 203, 204, 205, 0, 0, 0, 0, 0, 0, 0, 0 }, 8 },
-    { "Volcanic Fish (Ring of Fire)", "Ring of Fire", 1009U, 0.f, 0.f, 11,
+    { "Volcanic Fish (Ring of Fire)", "Ring of Fire", 1195U, 0.f, 0.f, 11, // Draconis Mons
       { 212, 213, 214, 215, 216, 217, 218, 219, 0, 0, 0, 0, 0, 0, 0, 0 }, 8 },
     { "Open Water (World)", "World", 0U, 0.f, 0.f, 5,
       { 226, 227, 228, 229, 230, 231, 232, 233, 0, 0, 0, 0, 0, 0, 0, 0 }, 8 },
@@ -1954,7 +1954,7 @@ const FishingHole HOLE_TABLE[] = {
       { 240, 241, 242, 243, 244, 245, 246, 247, 0, 0, 0, 0, 0, 0, 0, 0 }, 8 },
     { "Open Water (Horn of Maguuma)", "Horn of Maguuma", 1510U, 0.f, 0.f, 12,
       { 254, 255, 256, 257, 258, 259, 260, 261, 0, 0, 0, 0, 0, 0, 0, 0 }, 8 },
-    { "Open Water (Janthir)", "Janthir Wilds", 0U, 0.f, 0.f, 13,
+    { "Open Water (Janthir)", "Janthir", 1550U, 0.f, 0.f, 13, // Lowland Shore
       { 275, 276, 277, 278, 279, 280, 281, 282, 0, 0, 0, 0, 0, 0, 0, 0 }, 8 },
     { "Open Water (Castora)", "Castora", 1595U, 0.f, 0.f, 14,
       { 287, 288, 291, 292, 296, 297, 298, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 7 },
@@ -1962,7 +1962,7 @@ const FishingHole HOLE_TABLE[] = {
       { 289, 290, 293, 294, 295, 299, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 6 },
     { "Open Water (Starlit Weald)", "Starlit Weald", 1593U, 0.f, 0.f, 15,
       { 300, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 1 },
-    { "Open Water (Mistburned Barrens)", "Mistburned Barrens", 1526U, 0.f, 0.f, 17,
+    { "Open Water (Mistburned Barrens)", "Mistburned Barrens", 1575U, 0.f, 0.f, 17,
       { 301, 302, 303, 304, 305, 306, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 6 },
 };
 const int HOLE_COUNT = (int)(sizeof(HOLE_TABLE) / sizeof(HOLE_TABLE[0]));
