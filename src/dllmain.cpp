@@ -638,8 +638,14 @@ static bool FishMatchesFilter(int fishIdx) {
     if (g_ShowCurrentOnly) {
         TimeOfDay cur = GetCurrentTimeOfDayForFish(f);
         if (f.time != TimeOfDay::Any && f.time != cur) return false;
-    } else if (g_FilterTime > 0 && f.time != TimeOfDay::Any && (int)f.time != g_FilterTime) {
-        return false;
+    } else if (g_FilterTime > 0 && f.time != TimeOfDay::Any) {
+        // Dawn-tagged fish ("covers Dusk/Dawn") should show under either the
+        // Dawn or Dusk dropdown selection, not just Dawn — otherwise Dusk is a
+        // dead option, since no fish is ever tagged TimeOfDay::Dusk directly.
+        bool isTwilightFish   = (f.time == TimeOfDay::Dawn);
+        bool twilightSelected = (g_FilterTime == (int)TimeOfDay::Dawn ||
+                                 g_FilterTime == (int)TimeOfDay::Dusk);
+        if (!(isTwilightFish && twilightSelected) && (int)f.time != g_FilterTime) return false;
     }
 
     // Map filter

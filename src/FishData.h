@@ -249,26 +249,54 @@ inline bool FishUsesCanthaCycle(const Fish& f) {
 inline TimeOfDay GetCurrentTimeOfDayForFish(const Fish& f) {
     if (f.holeType == HoleWater::Volcanic) return TimeOfDay::Day;
     uint32_t s = GetTyrianSeconds();
+    TimeOfDay phase;
     if (FishUsesCanthaCycle(f)) {
-        if (s < CA_DAWN_START)  return TimeOfDay::Night;
-        if (s < CA_DAY_START)   return TimeOfDay::Dawn;
-        if (s < CA_DUSK_START)  return TimeOfDay::Day;
-        if (s < CA_NIGHT_START) return TimeOfDay::Dusk;
-        return TimeOfDay::Night;
+        if (s < CA_DAWN_START)       phase = TimeOfDay::Night;
+        else if (s < CA_DAY_START)   phase = TimeOfDay::Dawn;
+        else if (s < CA_DUSK_START)  phase = TimeOfDay::Day;
+        else if (s < CA_NIGHT_START) phase = TimeOfDay::Dusk;
+        else                          phase = TimeOfDay::Night;
+    } else {
+        phase = GetCurrentTimeOfDay();
     }
-    return GetCurrentTimeOfDay();
+    // Dawn-tagged fish ("covers Dusk/Dawn") are catchable during both twilight
+    // transitions, so collapse Dusk into Dawn here — this function only exists
+    // to drive fish-time matching, not to report the literal current phase.
+    return (phase == TimeOfDay::Dusk) ? TimeOfDay::Dawn : phase;
+}
+
+// Seconds until the next Dawn-or-Dusk transition begins, or 0 if currently in
+// one — shared by both cycles' twilight handling in SecondsUntilPhaseForFish.
+inline uint32_t SecondsUntilTwilightForBounds(uint32_t s, uint32_t dawnStart, uint32_t dayStart,
+                                               uint32_t duskStart, uint32_t nightStart) {
+    bool inDawn = (s >= dawnStart && s < dayStart);
+    bool inDusk = (s >= duskStart && s < nightStart);
+    if (inDawn || inDusk) return 0;
+    if (s < dawnStart) return dawnStart - s;
+    if (s < duskStart) return duskStart - s;
+    return (TYRIAN_CYCLE - s) + dawnStart;
 }
 
 inline uint32_t SecondsUntilPhaseForFish(const Fish& f, TimeOfDay phase) {
     if (phase == TimeOfDay::Any) return 0;
     if (f.holeType == HoleWater::Volcanic)
         return (phase == TimeOfDay::Day) ? 0 : TYRIAN_CYCLE; // Draconis Mons: always/never
-    if (!FishUsesCanthaCycle(f)) return SecondsUntilPhase(phase);
 
     uint32_t s = GetTyrianSeconds();
+    bool cantha = FishUsesCanthaCycle(f);
+
+    // Dawn-tagged fish are catchable during both Dawn and Dusk — count down to
+    // whichever transition comes first, or 0 if already in one.
+    if (phase == TimeOfDay::Dawn) {
+        return cantha
+            ? SecondsUntilTwilightForBounds(s, CA_DAWN_START, CA_DAY_START, CA_DUSK_START, CA_NIGHT_START)
+            : SecondsUntilTwilightForBounds(s, TY_DAWN_START, TY_DAY_START, TY_DUSK_START, TY_NIGHT_START);
+    }
+
+    if (!cantha) return SecondsUntilPhase(phase);
+
     uint32_t start = 0;
     switch (phase) {
-        case TimeOfDay::Dawn:  start = CA_DAWN_START;  break;
         case TimeOfDay::Day:   start = CA_DAY_START;   break;
         case TimeOfDay::Dusk:  start = CA_DUSK_START;  break;
         case TimeOfDay::Night: start = CA_NIGHT_START; break;
