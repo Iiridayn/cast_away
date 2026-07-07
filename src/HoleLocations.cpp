@@ -3694,6 +3694,16 @@ const char* HoleWaterName(HoleWater w) {
         case HoleWater::Volcanic: return "Volcanic";
         case HoleWater::Volcanicnoxious: return "Volcanicnoxious";
         case HoleWater::Wreckage: return "Wreckage";
+        case HoleWater::FracturedFreshwater: return "Fractured Freshwater";
+        case HoleWater::FracturedLake: return "Fractured Lake";
+        case HoleWater::FracturedChannel: return "Fractured Channel";
+        case HoleWater::FracturedDesert: return "Fractured Desert";
+        case HoleWater::AstralFish: return "Astral Fish";
+        case HoleWater::SpireFish: return "Spire Fish";
+        case HoleWater::Brackish: return "Brackish Water";
+        case HoleWater::Nayosian: return "Nayosian Fish";
+        case HoleWater::Dreamfish: return "Dream Fish";
+        case HoleWater::SaltwaterTropical: return "Saltwater Tropical";
         default: return "Unknown";
     }
 }

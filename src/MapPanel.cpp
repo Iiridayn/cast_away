@@ -41,7 +41,7 @@ namespace {
     static const RegionMaps REGION_MAPS[] = {
         { "Kryta",                KRYTA_MAPS,     8 },
         { "Ascalon",              ASCALON_MAPS,   7 },
-        { "Shiverpeak Mountains", SHIVERPEAK_MAPS,9 },
+        { "Shiverpeak Mountains", SHIVERPEAK_MAPS,11 },
         { "Maguuma Jungle",       MAGUUMA_MAPS,   9 },
         { "Ruins of Orr",         ORR_MAPS,       4 },
         { "Castora",              CASTORA_MAPS,   3 },
@@ -67,10 +67,12 @@ namespace {
         return false;
     }
 
-    // Returns the mapId within `region` that has the most holes matching `want`,
-    // or 0 if the region is not multi-map. `fallback` is returned when the region
-    // is known but no map has any matching hole.
-    uint32_t BestMapForRegion(const char* region, HoleWater want, uint32_t fallback) {
+    // Returns the mapId within `region` that has the most holes matching any
+    // of `wantTypes[0..wantCount)`, or 0 if the region is not multi-map.
+    // wantCount==0 matches every hole (unrestricted). `fallback` is returned
+    // when the region is known but no map has any matching hole.
+    uint32_t BestMapForRegion(const char* region, const HoleWater* wantTypes, uint8_t wantCount,
+                               uint32_t fallback) {
         if (!region) return 0;
         const RegionMaps* rm = nullptr;
         for (const auto& r : REGION_MAPS) {
@@ -85,7 +87,10 @@ namespace {
             for (int j = 0; j < HOLE_LOCATION_COUNT; ++j) {
                 const HoleLocation& h = HOLE_LOCATION_TABLE[j];
                 if (h.mapId != mid) continue;
-                if (want == HoleWater::Any || h.water == want) ++cnt;
+                bool matches = (wantCount == 0);
+                for (uint8_t k = 0; !matches && k < wantCount; ++k)
+                    if (h.water == wantTypes[k]) matches = true;
+                if (matches) ++cnt;
             }
             if (cnt > bestCount) { bestCount = cnt; bestId = mid; }
         }
@@ -302,9 +307,12 @@ void MapPanel::RenderHoles(ImDrawList* dl, ImVec2 wp, ImVec2 ws,
                             int selectedFishIdx, float game_x, float game_z) {
     (void)game_x; (void)game_z;
 
-    HoleWater filterType = HoleWater::Any;
-    if (selectedFishIdx >= 0 && selectedFishIdx < FISH_COUNT)
-        filterType = FISH_TABLE[selectedFishIdx].holeType;
+    const HoleWater* filterTypes = nullptr;
+    uint8_t filterCount = 0;
+    if (selectedFishIdx >= 0 && selectedFishIdx < FISH_COUNT) {
+        filterTypes = FISH_TABLE[selectedFishIdx].holeType;
+        filterCount = FISH_TABLE[selectedFishIdx].holeTypeCount;
+    }
 
     // Bounds for the currently shown map are required to convert game coords.
     MapBoundsData b;
@@ -322,7 +330,12 @@ void MapPanel::RenderHoles(ImDrawList* dl, ImVec2 wp, ImVec2 ws,
     for (int i = 0; i < HOLE_LOCATION_COUNT; ++i) {
         const HoleLocation& h = HOLE_LOCATION_TABLE[i];
         if (h.mapId != m_lastMapId) continue;
-        if (filterType != HoleWater::Any && h.water != filterType) continue;
+        if (filterCount > 0) {
+            bool matches = false;
+            for (uint8_t k = 0; !matches && k < filterCount; ++k)
+                if (h.water == filterTypes[k]) matches = true;
+            if (!matches) continue;
+        }
 
         // game metres -> map inches -> continent coords
         float ix = h.game_x * 39.3701f;
@@ -515,7 +528,7 @@ void MapPanel::Render(int selectedFishIdx, int mumbleMapId, float game_x, float 
                 // the most holes matching this fish's holeType, falling back
                 // to HOLE_TABLE's nominal map.
                 uint32_t chosenMapId = hole.mapId;
-                uint32_t better = BestMapForRegion(fish.map, fish.holeType, hole.mapId);
+                uint32_t better = BestMapForRegion(fish.map, fish.holeType, fish.holeTypeCount, hole.mapId);
                 if (better != 0) chosenMapId = better;
 
                 m_lastMapId      = chosenMapId;
@@ -547,7 +560,12 @@ void MapPanel::Render(int selectedFishIdx, int mumbleMapId, float game_x, float 
                             for (int j = 0; j < HOLE_LOCATION_COUNT; ++j) {
                                 const HoleLocation& hl = HOLE_LOCATION_TABLE[j];
                                 if (hl.mapId != chosenMapId) continue;
-                                if (fish.holeType != HoleWater::Any && hl.water != fish.holeType) continue;
+                                if (fish.holeTypeCount > 0) {
+                                    bool matches = false;
+                                    for (uint8_t k = 0; !matches && k < fish.holeTypeCount; ++k)
+                                        if (hl.water == fish.holeType[k]) matches = true;
+                                    if (!matches) continue;
+                                }
                                 pickX = hl.game_x; pickZ = hl.game_z; havePick = true;
                                 break;
                             }

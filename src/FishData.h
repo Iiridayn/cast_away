@@ -55,8 +55,33 @@ struct Fish {
     const char* filletIconUrl; // nullptr if none
     const char* masteryRequired; // nullptr if none
     const char* wikiSlug;
-    HoleWater   holeType = HoleWater::Any;
+    // Up to 4 hole types this fish is actually caught from. holeTypeCount==0
+    // means unrestricted (matches every hole type in its region) — most fish
+    // have exactly one, but some are only catchable via a specific handful of
+    // named holes (e.g. Fractured Fish drops from all 4 Skywatch Archipelago
+    // "Fractured" holes but nowhere else), which HoleWater::Any would
+    // misrepresent as matching literally any hole type anywhere.
+    HoleWater   holeType[4] = {HoleWater::Any, HoleWater::Any, HoleWater::Any, HoleWater::Any};
+    uint8_t     holeTypeCount = 0;
+    // Extra region(s) this fish is also confirmed catchable in, beyond `map`
+    // — for fish genuinely valid across two unrelated named regions rather
+    // than just multiple maps within one. Confirmed by exact-name matches
+    // against a newer region's own hole catch-tables (e.g. 5 Shiverpeak
+    // Mountains fish and 27 Kryta/Kaineng/Maguuma/Crystal Desert fish are
+    // also caught at Janthir Wilds / Skywatch Archipelago respectively).
+    // nullptr = unused slot.
+    const char* extraRegions[2] = {nullptr, nullptr};
 };
+
+// True if `want` is explicitly one of `f`'s recorded hole types (strict
+// membership — does NOT treat holeTypeCount==0 as a wildcard match, unlike
+// the map-matching helpers below). Used for special-cases keyed on a fish's
+// literal hole type, like the Draconis Mons Volcanic fish.
+inline bool FishTaggedWithHoleType(const Fish& f, HoleWater want) {
+    for (uint8_t i = 0; i < f.holeTypeCount; ++i)
+        if (f.holeType[i] == want) return true;
+    return false;
+}
 
 struct Waypoint {
     const char* name;
@@ -233,7 +258,7 @@ inline bool FishUsesCanthaCycle(const Fish& f) {
 }
 
 inline TimeOfDay GetCurrentTimeOfDayForFish(const Fish& f) {
-    if (f.holeType == HoleWater::Volcanic) return TimeOfDay::Day;
+    if (FishTaggedWithHoleType(f, HoleWater::Volcanic)) return TimeOfDay::Day;
     uint32_t s = GetTyrianSeconds();
     TimeOfDay phase;
     if (FishUsesCanthaCycle(f)) {
@@ -333,7 +358,7 @@ inline uint32_t SecondsUntilPhaseForBounds(uint32_t s, TimeOfDay want,
 
 inline uint32_t SecondsUntilPhaseForFish(const Fish& f, TimeOfDay phase) {
     if (phase == TimeOfDay::Any) return 0;
-    if (f.holeType == HoleWater::Volcanic)
+    if (FishTaggedWithHoleType(f, HoleWater::Volcanic))
         return (phase == TimeOfDay::Day) ? 0 : TYRIAN_CYCLE; // Draconis Mons: always/never
 
     uint32_t s = GetTyrianSeconds();

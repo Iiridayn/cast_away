@@ -615,12 +615,22 @@ static bool IsFishHere(const Fish& f, int mapId) {
             !MapPanel::MapHasSaltwater((uint32_t)mapId)) return false;
         return true;
     }
-    if (!MapPanel::IsMapInRegion((uint32_t)mapId, f.map)) return false;
+    bool inRegion = MapPanel::IsMapInRegion((uint32_t)mapId, f.map);
+    if (!inRegion) {
+        for (const char* extra : f.extraRegions) {
+            if (extra && MapPanel::IsMapInRegion((uint32_t)mapId, extra)) { inRegion = true; break; }
+        }
+    }
+    if (!inRegion) return false;
     // Region membership isn't enough on its own: multi-map regions mix hole
     // types (e.g. Shiverpeak's Frostgorge Sound has no Lake holes, only
-    // Boreal/Coastal), so also require the fish's specific hole type to
-    // actually exist on the player's current map.
-    return MapPanel::MapHasHoleType((uint32_t)mapId, f.holeType);
+    // Boreal/Coastal), so also require at least one of the fish's recorded
+    // hole types to actually exist on the player's current map (no
+    // restriction recorded at all means it matches regardless).
+    if (f.holeTypeCount == 0) return true;
+    for (uint8_t i = 0; i < f.holeTypeCount; ++i)
+        if (MapPanel::MapHasHoleType((uint32_t)mapId, f.holeType[i])) return true;
+    return false;
 }
 
 static bool FishMatchesFilter(int fishIdx) {
@@ -1320,7 +1330,10 @@ static ImU32 ChipTimeColor(TimeOfDay t) {
 }
 
 static const char* FishWaterChipLabel(const Fish& f) {
-    return f.holeType != HoleWater::Any ? HoleWaterName(f.holeType) : WaterTypeName(f.water);
+    // Chip space is tight — show just the first recorded hole type even if
+    // the fish has more than one; the detail pane's "Hole" attribute lists
+    // all of them.
+    return f.holeTypeCount > 0 ? HoleWaterName(f.holeType[0]) : WaterTypeName(f.water);
 }
 
 static ImU32 ChipWaterColor(WaterType w) {
@@ -1484,9 +1497,18 @@ static void RenderFishDetails(int fishIdx) {
     };
     attr("Map",        f.map);
     attr("Water",      WaterTypeName(f.water));
-    attr("Hole",       f.holeType != HoleWater::Any ? HoleWaterName(f.holeType) : "—");
+    char holeBuf[128] = "";
+    for (uint8_t hi = 0; hi < f.holeTypeCount; ++hi) {
+        if (hi > 0) strcat(holeBuf, " / ");
+        strcat(holeBuf, HoleWaterName(f.holeType[hi]));
+    }
+    attr("Hole",       holeBuf[0] ? holeBuf : "—");
     {
-        int rp = GetRecommendedPower(f.map, f.holeType);
+        // Multiple hole types can have different recommended power; show the
+        // highest so the player knows what covers all of this fish's holes.
+        int rp = 0;
+        for (uint8_t hi = 0; hi < f.holeTypeCount; ++hi)
+            rp = std::max(rp, GetRecommendedPower(f.map, f.holeType[hi]));
         if (rp > 0) {
             char buf[16]; snprintf(buf, sizeof(buf), "%d", rp);
             attr("Rec. Power", buf);
