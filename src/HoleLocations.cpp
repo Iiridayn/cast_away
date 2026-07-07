@@ -3704,6 +3704,7 @@ const char* HoleWaterName(HoleWater w) {
         case HoleWater::Nayosian: return "Nayosian Fish";
         case HoleWater::Dreamfish: return "Dream Fish";
         case HoleWater::SaltwaterTropical: return "Saltwater Tropical";
+        case HoleWater::FreshwaterTropical: return "Freshwater Tropical";
         default: return "Unknown";
     }
 }

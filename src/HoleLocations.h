@@ -67,6 +67,7 @@ enum class HoleWater : uint8_t {
     Nayosian            = 31, // Inner Nayos (Higher Chance hole for some fish)
     Dreamfish           = 32, // Inner Nayos (Higher Chance hole for some fish)
     SaltwaterTropical   = 33, // Shipwreck Strand (also catches some Seitung Province fish)
+    FreshwaterTropical  = 34, // All 3 Castora maps (also catches some Maguuma/Echovald Wilds fish)
     Any      = 255,
 };
 
