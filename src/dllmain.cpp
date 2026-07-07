@@ -596,6 +596,33 @@ static bool IsWildcardMapFish(const Fish& f) {
     return f.map && (!strcmp(f.map, "World") || !strcmp(f.map, "Saltwater"));
 }
 
+// Whether `f` is catchable on `mapId` (0 = unknown, always false). Shared by
+// the "Here" filter and the Favourites tab's Here-first sort.
+static bool IsFishHere(const Fish& f, int mapId) {
+    if (mapId <= 0) return false;
+    if (!f.map) return false;
+    if (IsWildcardMapFish(f)) {
+        // Fishing-less instances (Mistlock Sanctuary, Armistice Bastion) have
+        // zero hole data, which would otherwise fall through to a permissive
+        // "no data" default below — gate on real fishing content first.
+        if (!MapPanel::IsKnownFishingMap((uint32_t)mapId)) return false;
+        // World Class Fish drop from every hole type's catch table (Deep,
+        // Cavern, Grotto, Quarry, Channel, Volcanic, Offshore, Coastal all
+        // confirmed via wiki), so they always pass here. Saltwater fish are
+        // more specific — never present in a purely-freshwater hole's catch
+        // table — so they still require an actual saltwater map.
+        if (f.water == WaterType::Saltwater &&
+            !MapPanel::MapHasSaltwater((uint32_t)mapId)) return false;
+        return true;
+    }
+    if (!MapPanel::IsMapInRegion((uint32_t)mapId, f.map)) return false;
+    // Region membership isn't enough on its own: multi-map regions mix hole
+    // types (e.g. Shiverpeak's Frostgorge Sound has no Lake holes, only
+    // Boreal/Coastal), so also require the fish's specific hole type to
+    // actually exist on the player's current map.
+    return MapPanel::MapHasHoleType((uint32_t)mapId, f.holeType);
+}
+
 static bool FishMatchesFilter(int fishIdx) {
     const Fish& f = FISH_TABLE[fishIdx];
 
@@ -658,32 +685,9 @@ static bool FishMatchesFilter(int fishIdx) {
     if (!g_FilterMap.empty() && g_FilterMap != std::string(f.map ? f.map : "")) return false;
 
     // "Here" filter — fish whose region contains the player's current map.
-    if (g_FilterHere) {
-        if (g_PlayerMapId <= 0) return false;
-        if (!f.map) return false;
-        if (IsWildcardMapFish(f)) {
-            // Fishing-less instances (Mistlock Sanctuary, Armistice Bastion) have
-            // zero hole data, which would otherwise fall through to a permissive
-            // "no data" default below — gate on real fishing content first.
-            if (!MapPanel::IsKnownFishingMap((uint32_t)g_PlayerMapId)) return false;
-            // World Class Fish drop from every hole type's catch table (Deep,
-            // Cavern, Grotto, Quarry, Channel, Volcanic, Offshore, Coastal all
-            // confirmed via wiki), so they always pass here. Saltwater fish are
-            // more specific — never present in a purely-freshwater hole's catch
-            // table — so they still require an actual saltwater map.
-            // RebuildSortedFishIndices sorts these last regardless, since a
-            // match here isn't as informative as a region-specific one.
-            if (f.water == WaterType::Saltwater &&
-                !MapPanel::MapHasSaltwater((uint32_t)g_PlayerMapId)) return false;
-        } else {
-            if (!MapPanel::IsMapInRegion((uint32_t)g_PlayerMapId, f.map)) return false;
-            // Region membership isn't enough on its own: multi-map regions mix hole
-            // types (e.g. Shiverpeak's Frostgorge Sound has no Lake holes, only
-            // Boreal/Coastal), so also require the fish's specific hole type to
-            // actually exist on the player's current map.
-            if (!MapPanel::MapHasHoleType((uint32_t)g_PlayerMapId, f.holeType)) return false;
-        }
-    }
+    // RebuildSortedFishIndices sorts World/Saltwater matches last regardless,
+    // since a wildcard match here isn't as informative as a region-specific one.
+    if (g_FilterHere && !IsFishHere(f, g_PlayerMapId)) return false;
 
     // Hide caught — hide fish already caught
     if (g_HideCaught && g_AchTracker.hoarded && g_AchTracker.IsCaught(fishIdx)) return false;
@@ -1586,9 +1590,17 @@ static int RarityRank(const char* r) {
     return 0;
 }
 
+// "Now" tiering: dusk/dawn fish stand out as the current exclusive slot,
+// then plain day/night, then Any (catchable regardless of time) last.
+static int NowTimeRank(const Fish& f) {
+    if (f.time == TimeOfDay::Dawn) return 0; // twilight ("covers Dusk/Dawn")
+    if (f.time == TimeOfDay::Day || f.time == TimeOfDay::Night) return 1;
+    return 2; // Any
+}
+
 static void RebuildSortedFishIndices() {
     std::iota(g_SortedFishIndices.begin(), g_SortedFishIndices.end(), 0);
-    if (g_SortMode == FishSortMode::Default && !g_FilterHere) return;
+    if (g_SortMode == FishSortMode::Default && !g_FilterHere && !g_ShowCurrentOnly) return;
 
     std::stable_sort(g_SortedFishIndices.begin(), g_SortedFishIndices.end(),
         [&](int a, int b) {
@@ -1600,6 +1612,18 @@ static void RebuildSortedFishIndices() {
             if (g_FilterHere) {
                 bool wa = IsWildcardMapFish(fa), wb = IsWildcardMapFish(fb);
                 if (wa != wb) return !wa;
+                // Saltwater fish are more specific than World (which drops from
+                // every hole type), so show them first within the wildcard bucket.
+                if (wa && wb) {
+                    bool sa = fa.map && !strcmp(fa.map, "Saltwater");
+                    bool sb = fb.map && !strcmp(fb.map, "Saltwater");
+                    if (sa != sb) return sa;
+                }
+            }
+
+            if (g_ShowCurrentOnly) {
+                int ra = NowTimeRank(fa), rb = NowTimeRank(fb);
+                if (ra != rb) return ra < rb;
             }
 
             int cmp = 0;
@@ -1973,26 +1997,26 @@ void AddonRender() {
             ImGui::SetNextItemWidth(90.f);
             if (ImGui::BeginCombo("##Time", timeLbl)) {
                 if (ImGui::Selectable("All Times", !g_ShowCurrentOnly && g_FilterTime == 0)) {
-                    g_ShowCurrentOnly = false; g_FilterTime = 0;
+                    g_ShowCurrentOnly = false; g_FilterTime = 0; g_SortDirty = true;
                 }
                 // Dedicated "Any" option: only fish actually tagged TimeOfDay::Any,
                 // as opposed to "All Times" which shows every fish regardless of time.
                 if (ImGui::Selectable("Any", !g_ShowCurrentOnly && g_FilterTime == -1)) {
-                    g_ShowCurrentOnly = false; g_FilterTime = -1;
+                    g_ShowCurrentOnly = false; g_FilterTime = -1; g_SortDirty = true;
                 }
                 // Merged: no fish is ever tagged TimeOfDay::Dusk directly — Dawn-
                 // tagged fish ("covers Dusk/Dawn") show under this single entry.
                 if (ImGui::Selectable("Dawn/Dusk", !g_ShowCurrentOnly && g_FilterTime == (int)TimeOfDay::Dawn)) {
-                    g_ShowCurrentOnly = false; g_FilterTime = (int)TimeOfDay::Dawn;
+                    g_ShowCurrentOnly = false; g_FilterTime = (int)TimeOfDay::Dawn; g_SortDirty = true;
                 }
                 if (ImGui::Selectable("Day", !g_ShowCurrentOnly && g_FilterTime == (int)TimeOfDay::Day)) {
-                    g_ShowCurrentOnly = false; g_FilterTime = (int)TimeOfDay::Day;
+                    g_ShowCurrentOnly = false; g_FilterTime = (int)TimeOfDay::Day; g_SortDirty = true;
                 }
                 if (ImGui::Selectable("Night", !g_ShowCurrentOnly && g_FilterTime == (int)TimeOfDay::Night)) {
-                    g_ShowCurrentOnly = false; g_FilterTime = (int)TimeOfDay::Night;
+                    g_ShowCurrentOnly = false; g_FilterTime = (int)TimeOfDay::Night; g_SortDirty = true;
                 }
                 if (ImGui::Selectable("Now", g_ShowCurrentOnly)) {
-                    g_ShowCurrentOnly = true;
+                    g_ShowCurrentOnly = true; g_SortDirty = true;
                 }
                 ImGui::EndCombo();
             }
@@ -2424,10 +2448,22 @@ void AddonRender() {
                 const float fCardW = floorf((ImGui::GetContentRegionAvail().x - fGap) / 2.f);
                 int fcol = 0;
 
+                std::vector<int> favIndices;
                 for (int i = 0; i < FISH_COUNT; i++) {
+                    if (FISH_TABLE[i].achievementId == 0) continue;
+                    if (!IsFavourite(FISH_TABLE[i].name)) continue;
+                    favIndices.push_back(i);
+                }
+                // Fish catchable at the player's current location surface first;
+                // otherwise keep the existing table order.
+                std::stable_sort(favIndices.begin(), favIndices.end(), [](int a, int b) {
+                    bool ha = IsFishHere(FISH_TABLE[a], g_PlayerMapId);
+                    bool hb = IsFishHere(FISH_TABLE[b], g_PlayerMapId);
+                    return ha && !hb;
+                });
+
+                for (int i : favIndices) {
                     const Fish& f = FISH_TABLE[i];
-                    if (f.achievementId == 0) continue;
-                    if (!IsFavourite(f.name)) continue;
 
                     if (fcol == 1) ImGui::SameLine(fCardW + fGap);
 
