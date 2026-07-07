@@ -1119,6 +1119,21 @@ static void CheckTimeWindowNotifications() {
         return;
     lastCheck = now;
 
+    // Prune entries whose window has closed. Checked per-entry (not as a
+    // whole-popup dismiss) so one favourite's dusk/dawn window ending doesn't
+    // clear other still-relevant favourites (e.g. a day fish) out of the
+    // same popup.
+    if (g_FavNotifActive && !g_FavNotif.dismissed) {
+        auto& fish = g_FavNotif.fish;
+        fish.erase(std::remove_if(fish.begin(), fish.end(), [](const FavFishEntry& e) {
+            if (e.fishIdx < 0 || e.fishIdx >= FISH_COUNT) return true;
+            const Fish& ef = FISH_TABLE[e.fishIdx];
+            uint32_t esecs = SecondsUntilPhaseForFish(ef, ef.time);
+            return !(esecs == 0 || esecs <= (uint32_t)g_NotifyLeadSeconds);
+        }), fish.end());
+        if (fish.empty()) g_FavNotifActive = false;
+    }
+
     int64_t wallCycle = (int64_t)(time(nullptr) / 7200);
 
     std::vector<std::string> favsCopy;
@@ -1609,12 +1624,16 @@ static void RebuildSortedFishIndices() {
 // ---------------------------------------------------------------------------
 // RenderFavNotification (and dummy for repositioning)
 // ---------------------------------------------------------------------------
+// Shared by FavNotifBeginWindow's layout math and both card-render blocks
+// below — tall enough for name / map / bait+hole / time (4 text lines).
+static constexpr float FAV_CARD_H = 82.f;
+
 static void FavNotifBeginWindow(const char* id, int fishCount, bool locked,
                                 bool justUnlocked, ImGuiIO& io) {
     const float W      = 300.f;
     const float lineH  = ImGui::GetTextLineHeightWithSpacing();
     const float btnH   = ImGui::GetFrameHeight();
-    const float CARD_H = 66.f;
+    const float CARD_H = FAV_CARD_H;
     const float ROW_H  = CARD_H + btnH + 6.f;  // card + Open Map button + gap
     const float FOOT_H = btnH + 8.f;
     const float HEAD_H = lineH + 6.f;
@@ -1679,7 +1698,7 @@ static void RenderFavNotification() {
         ImGui::TextUnformatted("Favourite fish incoming!");
         ImGui::Separator();
 
-        static const float CARD_H   = 66.f;
+        static const float CARD_H   = FAV_CARD_H;
         static const float ICON_SZ  = 36.f;
         static const float BORDER_W = 3.f;
         static const float PAD      = 6.f;
@@ -1731,6 +1750,10 @@ static void RenderFavNotification() {
             dl->AddText({tx, p.y+PAD}, rarityCol, f.name);
             dl->AddText({tx, p.y+PAD+lineH2+2.f}, IM_COL32(130,130,130,255),
                         f.map ? f.map : "?");
+            char holeBuf[64];
+            snprintf(holeBuf, sizeof(holeBuf), "%s \xe2\x80\xa2 %s",
+                     BAIT_NAMES[(int)f.bait], FishWaterChipLabel(f));
+            dl->AddText({tx, p.y+PAD+lineH2*2.f+3.f}, IM_COL32(140,140,150,220), holeBuf);
             // Dawn-tagged fish are actually counting down to whichever twilight
             // transition (Dawn or Dusk) is nearer — show the real one instead
             // of always saying "Dawn".
@@ -1746,7 +1769,7 @@ static void RenderFavNotification() {
                 snprintf(timeBuf, sizeof(timeBuf), "%s in %um %02us",
                          phaseName, secs/60, secs%60);
             }
-            dl->AddText({tx, p.y+PAD+lineH2*2.f+4.f}, IM_COL32(160,160,160,220), timeBuf);
+            dl->AddText({tx, p.y+PAD+lineH2*3.f+6.f}, IM_COL32(160,160,160,220), timeBuf);
 
             ImGui::Dummy({cardW, CARD_H});
 
@@ -1778,7 +1801,7 @@ static void RenderFavNotification() {
         ImGui::TextUnformatted("Favourite fish incoming!");
         ImGui::Separator();
         {
-            static const float CARD_H   = 66.f;
+            static const float CARD_H   = FAV_CARD_H;
             static const float ICON_SZ  = 36.f;
             static const float BORDER_W = 3.f;
             static const float PAD      = 6.f;
