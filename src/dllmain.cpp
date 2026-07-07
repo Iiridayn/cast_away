@@ -1132,7 +1132,9 @@ static void CheckTimeWindowNotifications() {
         if (!fav) continue;
 
         uint32_t secs = SecondsUntilPhaseForFish(f, f.time);
-        // secs == 0 means the phase just started; skip (already-in-window rule)
+        // secs == 0 means the window is already open (whenever within its
+        // duration, not just the instant it started) — don't fire a fresh
+        // "upcoming" notification for something that isn't upcoming anymore.
         if (secs == 0 || secs > (uint32_t)g_NotifyLeadSeconds) continue;
 
         auto it = g_LastNotifiedCycleWall.find(i);
@@ -1723,9 +1725,21 @@ static void RenderFavNotification() {
             dl->AddText({tx, p.y+PAD}, rarityCol, f.name);
             dl->AddText({tx, p.y+PAD+lineH2+2.f}, IM_COL32(130,130,130,255),
                         f.map ? f.map : "?");
+            // Dawn-tagged fish are actually counting down to whichever twilight
+            // transition (Dawn or Dusk) is nearer — show the real one instead
+            // of always saying "Dawn".
+            const char* phaseName = (f.time == TimeOfDay::Dawn)
+                ? TimeOfDayName(TwilightPhaseForFish(f))
+                : TimeOfDayName(f.time);
             char timeBuf[48];
-            snprintf(timeBuf, sizeof(timeBuf), "%s in %um %02us",
-                     TimeOfDayName(f.time), secs/60, secs%60);
+            if (secs == 0) {
+                uint32_t endsIn = SecondsUntilPhaseEndsForFish(f);
+                snprintf(timeBuf, sizeof(timeBuf), "%s — ends in %u:%02u",
+                         phaseName, endsIn/60, endsIn%60);
+            } else {
+                snprintf(timeBuf, sizeof(timeBuf), "%s in %um %02us",
+                         phaseName, secs/60, secs%60);
+            }
             dl->AddText({tx, p.y+PAD+lineH2*2.f+4.f}, IM_COL32(160,160,160,220), timeBuf);
 
             ImGui::Dummy({cardW, CARD_H});

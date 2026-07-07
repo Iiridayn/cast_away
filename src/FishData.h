@@ -202,20 +202,6 @@ inline uint32_t SecondsUntilNextSlot() {
     return (TYRIAN_CYCLE - s) + TY_DAWN_START;
 }
 
-inline uint32_t SecondsUntilPhase(TimeOfDay phase) {
-    if (phase == TimeOfDay::Any) return 0;
-    uint32_t s = GetTyrianSeconds();
-    uint32_t start = 0;
-    switch (phase) {
-        case TimeOfDay::Dawn:  start = TY_DAWN_START;  break;
-        case TimeOfDay::Day:   start = TY_DAY_START;   break;
-        case TimeOfDay::Dusk:  start = TY_DUSK_START;  break;
-        case TimeOfDay::Night: start = TY_NIGHT_START; break;
-        default:               return 0;
-    }
-    return (start > s) ? (start - s) : (TYRIAN_CYCLE - s + start);
-}
-
 // ---------------------------------------------------------------------------
 // Cantha cycle — End of Dragons and Visions of Eternity (Castora) maps run a
 // different day/night cycle than core Tyria: day and night are equal length,
@@ -277,32 +263,83 @@ inline uint32_t SecondsUntilTwilightForBounds(uint32_t s, uint32_t dawnStart, ui
     return (TYRIAN_CYCLE - s) + dawnStart;
 }
 
+// Which twilight transition (Dawn or Dusk) is currently active or coming up
+// next — for display purposes, since Dawn-tagged fish are actually counting
+// down to whichever one is nearer, and the UI shouldn't always say "Dawn"
+// when it's really counting down to Dusk.
+inline TimeOfDay TwilightPhaseForBounds(uint32_t s, uint32_t dawnStart, uint32_t dayStart,
+                                         uint32_t duskStart, uint32_t nightStart) {
+    if (s >= dawnStart && s < dayStart)   return TimeOfDay::Dawn; // currently in Dawn
+    if (s >= duskStart && s < nightStart) return TimeOfDay::Dusk; // currently in Dusk
+    if (s < dawnStart) return TimeOfDay::Dawn;
+    if (s < duskStart) return TimeOfDay::Dusk;
+    return TimeOfDay::Dawn; // wraps past Night into next cycle's Dawn
+}
+
+inline TimeOfDay TwilightPhaseForFish(const Fish& f) {
+    uint32_t s = GetTyrianSeconds();
+    return FishUsesCanthaCycle(f)
+        ? TwilightPhaseForBounds(s, CA_DAWN_START, CA_DAY_START, CA_DUSK_START, CA_NIGHT_START)
+        : TwilightPhaseForBounds(s, TY_DAWN_START, TY_DAY_START, TY_DUSK_START, TY_NIGHT_START);
+}
+
+// Seconds until the fish's currently-open window closes. Only meaningful when
+// the window really is open right now (i.e. SecondsUntilPhaseForFish(f, f.time)
+// == 0) — used to show "ends in X:XX" instead of a re-triggering countdown.
+inline uint32_t SecondsUntilPhaseEndsForBounds(uint32_t s, TimeOfDay want,
+                                                uint32_t dawnStart, uint32_t dayStart,
+                                                uint32_t duskStart, uint32_t nightStart) {
+    if (want == TimeOfDay::Day) return duskStart - s;
+    if (want == TimeOfDay::Night)
+        return (s >= nightStart) ? (TYRIAN_CYCLE - s) + dawnStart : dawnStart - s;
+    // Dawn (twilight): currently in the Dawn sub-window or the Dusk sub-window.
+    if (s >= dawnStart && s < dayStart) return dayStart - s;
+    return nightStart - s;
+}
+
+inline uint32_t SecondsUntilPhaseEndsForFish(const Fish& f) {
+    uint32_t s = GetTyrianSeconds();
+    return FishUsesCanthaCycle(f)
+        ? SecondsUntilPhaseEndsForBounds(s, f.time, CA_DAWN_START, CA_DAY_START, CA_DUSK_START, CA_NIGHT_START)
+        : SecondsUntilPhaseEndsForBounds(s, f.time, TY_DAWN_START, TY_DAY_START, TY_DUSK_START, TY_NIGHT_START);
+}
+
+// Seconds until `want` starts, or 0 if `s` is already inside it. Naive
+// "time until start" arithmetic mathematically never lands on exactly 0 — it
+// jumps straight from a small countdown to a full-cycle-away value the
+// instant the window opens — so a Day/Night-tagged favourite would get
+// pruned from the notification almost immediately after its window opened
+// instead of staying for the whole window, unless this checks "currently
+// active" explicitly first.
+inline uint32_t SecondsUntilPhaseForBounds(uint32_t s, TimeOfDay want,
+                                            uint32_t dawnStart, uint32_t dayStart,
+                                            uint32_t duskStart, uint32_t nightStart) {
+    switch (want) {
+        case TimeOfDay::Dawn:
+            return SecondsUntilTwilightForBounds(s, dawnStart, dayStart, duskStart, nightStart);
+        case TimeOfDay::Day:
+            if (s >= dayStart && s < duskStart) return 0;
+            return (s < dayStart) ? (dayStart - s) : (TYRIAN_CYCLE - s) + dayStart;
+        case TimeOfDay::Dusk:
+            if (s >= duskStart && s < nightStart) return 0;
+            return (s < duskStart) ? (duskStart - s) : (TYRIAN_CYCLE - s) + duskStart;
+        case TimeOfDay::Night:
+            if (s >= nightStart || s < dawnStart) return 0;
+            return nightStart - s;
+        default:
+            return 0;
+    }
+}
+
 inline uint32_t SecondsUntilPhaseForFish(const Fish& f, TimeOfDay phase) {
     if (phase == TimeOfDay::Any) return 0;
     if (f.holeType == HoleWater::Volcanic)
         return (phase == TimeOfDay::Day) ? 0 : TYRIAN_CYCLE; // Draconis Mons: always/never
 
     uint32_t s = GetTyrianSeconds();
-    bool cantha = FishUsesCanthaCycle(f);
-
-    // Dawn-tagged fish are catchable during both Dawn and Dusk — count down to
-    // whichever transition comes first, or 0 if already in one.
-    if (phase == TimeOfDay::Dawn) {
-        return cantha
-            ? SecondsUntilTwilightForBounds(s, CA_DAWN_START, CA_DAY_START, CA_DUSK_START, CA_NIGHT_START)
-            : SecondsUntilTwilightForBounds(s, TY_DAWN_START, TY_DAY_START, TY_DUSK_START, TY_NIGHT_START);
-    }
-
-    if (!cantha) return SecondsUntilPhase(phase);
-
-    uint32_t start = 0;
-    switch (phase) {
-        case TimeOfDay::Day:   start = CA_DAY_START;   break;
-        case TimeOfDay::Dusk:  start = CA_DUSK_START;  break;
-        case TimeOfDay::Night: start = CA_NIGHT_START; break;
-        default:                return 0;
-    }
-    return (start > s) ? (start - s) : (TYRIAN_CYCLE - s + start);
+    return FishUsesCanthaCycle(f)
+        ? SecondsUntilPhaseForBounds(s, phase, CA_DAWN_START, CA_DAY_START, CA_DUSK_START, CA_NIGHT_START)
+        : SecondsUntilPhaseForBounds(s, phase, TY_DAWN_START, TY_DAY_START, TY_DUSK_START, TY_NIGHT_START);
 }
 
 // Map IDs for the regions that use the Cantha cycle, for callers that only
