@@ -459,7 +459,6 @@ static bool g_FilterHere      = false;
 static bool g_HideCaught      = false;
 static int  g_PlayerMapId     = 0;   // updated each frame from MumbleLink
 static std::string g_FilterMap;
-static std::string g_CurrentMapName;
 
 static std::vector<std::string> g_Favourites;
 static std::mutex               g_FavMutex;
@@ -632,16 +631,23 @@ static bool FishMatchesFilter(int fishIdx) {
     }
 
     // Bait filter
-    if (g_FilterBait > 0 && (int)f.bait != g_FilterBait) return false;
+    if (g_FilterBait == -1) {
+        if (f.bait != BaitType::Any) return false;
+    } else if (g_FilterBait > 0 && (int)f.bait != g_FilterBait) return false;
 
     // Time filter
     if (g_ShowCurrentOnly) {
         TimeOfDay cur = GetCurrentTimeOfDayForFish(f);
         if (f.time != TimeOfDay::Any && f.time != cur) return false;
-    } else if (g_FilterTime > 0 && f.time != TimeOfDay::Any) {
-        // Dawn-tagged fish ("covers Dusk/Dawn") should show under either the
-        // Dawn or Dusk dropdown selection, not just Dawn — otherwise Dusk is a
-        // dead option, since no fish is ever tagged TimeOfDay::Dusk directly.
+    } else if (g_FilterTime == -1) {
+        // Dedicated "Any" option: only fish actually tagged TimeOfDay::Any.
+        if (f.time != TimeOfDay::Any) return false;
+    } else if (g_FilterTime > 0) {
+        // Specific-time selections show only exactly-matching fish — Any-tagged
+        // fish have their own dedicated option above, not a blanket match here.
+        if (f.time == TimeOfDay::Any) return false;
+        // Dawn-tagged fish ("covers Dusk/Dawn") show under the merged Dawn/Dusk
+        // dropdown entry, since no fish is ever tagged TimeOfDay::Dusk directly.
         bool isTwilightFish   = (f.time == TimeOfDay::Dawn);
         bool twilightSelected = (g_FilterTime == (int)TimeOfDay::Dawn ||
                                  g_FilterTime == (int)TimeOfDay::Dusk);
@@ -1829,15 +1835,6 @@ void AddonRender() {
         mumbleMapId = (rawMapId > 0 && rawMapId < 100000) ? (int)rawMapId : 0;
         game_x = mumble->fAvatarPosition[0];
         game_z = mumble->fAvatarPosition[2];
-
-        if (mumbleMapId != 0) {
-            for (int i = 0; i < HOLE_COUNT; i++) {
-                if ((int)HOLE_TABLE[i].mapId == mumbleMapId && HOLE_TABLE[i].map) {
-                    g_CurrentMapName = HOLE_TABLE[i].map;
-                    break;
-                }
-            }
-        }
     }
 
     // --- Per-frame work ---
@@ -1914,11 +1911,20 @@ void AddonRender() {
             ImGui::SameLine();
 
             ImGui::SetNextItemWidth(110.f);
-            if (ImGui::BeginCombo("##Bait",
-                    g_FilterBait == 0 ? "All Bait" : BAIT_NAMES[g_FilterBait])) {
+            const char* baitLbl = g_FilterBait == 0  ? "All Bait"
+                                 : g_FilterBait == -1 ? BAIT_NAMES[0]
+                                                       : BAIT_NAMES[g_FilterBait];
+            if (ImGui::BeginCombo("##Bait", baitLbl)) {
                 if (ImGui::Selectable("All Bait", g_FilterBait == 0)) g_FilterBait = 0;
+                // Dedicated "Any" option: only fish actually tagged BaitType::Any,
+                // as opposed to "All Bait" which shows every fish regardless of bait.
+                if (ImGui::Selectable(BAIT_NAMES[0], g_FilterBait == -1)) g_FilterBait = -1;
                 for (int i = 1; i < BAIT_COUNT; i++) {
                     if (i == (int)BaitType::BorrowedBait) continue;
+                    // The only fish using Haiju Minnow bait is achievement-less
+                    // (excluded from all browsable lists), so this option would
+                    // always show zero results — keep it out of the dropdown.
+                    if (i == (int)BaitType::HaijuMinnow) continue;
                     if (const BaitInfo* bi = GetBaitInfo((BaitType)i)) {
                         Texture_t* tex = CastAway::IconManager::GetIcon(bi->itemId);
                         if (tex && tex->Resource)
@@ -1935,22 +1941,35 @@ void AddonRender() {
             }
             ImGui::SameLine();
 
-            static const char* timeOpts[] = {"All Times","Dawn","Day","Dusk","Night"};
             const char* timeLbl = g_ShowCurrentOnly ? "Now"
-                                : timeOpts[g_FilterTime < 0 ? 0 : g_FilterTime];
+                                : g_FilterTime == -1                    ? "Any"
+                                : g_FilterTime == (int)TimeOfDay::Dawn  ? "Dawn/Dusk"
+                                : g_FilterTime == (int)TimeOfDay::Day   ? "Day"
+                                : g_FilterTime == (int)TimeOfDay::Night ? "Night"
+                                                                        : "All Times";
             ImGui::SetNextItemWidth(90.f);
             if (ImGui::BeginCombo("##Time", timeLbl)) {
                 if (ImGui::Selectable("All Times", !g_ShowCurrentOnly && g_FilterTime == 0)) {
                     g_ShowCurrentOnly = false; g_FilterTime = 0;
                 }
-                for (int i = 1; i <= 4; i++) {
-                    if (ImGui::Selectable(timeOpts[i], !g_ShowCurrentOnly && g_FilterTime == i)) {
-                        g_ShowCurrentOnly = false; g_FilterTime = i;
-                    }
+                // Dedicated "Any" option: only fish actually tagged TimeOfDay::Any,
+                // as opposed to "All Times" which shows every fish regardless of time.
+                if (ImGui::Selectable("Any", !g_ShowCurrentOnly && g_FilterTime == -1)) {
+                    g_ShowCurrentOnly = false; g_FilterTime = -1;
+                }
+                // Merged: no fish is ever tagged TimeOfDay::Dusk directly — Dawn-
+                // tagged fish ("covers Dusk/Dawn") show under this single entry.
+                if (ImGui::Selectable("Dawn/Dusk", !g_ShowCurrentOnly && g_FilterTime == (int)TimeOfDay::Dawn)) {
+                    g_ShowCurrentOnly = false; g_FilterTime = (int)TimeOfDay::Dawn;
+                }
+                if (ImGui::Selectable("Day", !g_ShowCurrentOnly && g_FilterTime == (int)TimeOfDay::Day)) {
+                    g_ShowCurrentOnly = false; g_FilterTime = (int)TimeOfDay::Day;
+                }
+                if (ImGui::Selectable("Night", !g_ShowCurrentOnly && g_FilterTime == (int)TimeOfDay::Night)) {
+                    g_ShowCurrentOnly = false; g_FilterTime = (int)TimeOfDay::Night;
                 }
                 if (ImGui::Selectable("Now", g_ShowCurrentOnly)) {
                     g_ShowCurrentOnly = true;
-                    g_FilterMap = g_CurrentMapName;
                 }
                 ImGui::EndCombo();
             }
