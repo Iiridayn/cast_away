@@ -1133,15 +1133,16 @@ static void CheckTimeWindowNotifications() {
         return;
     lastCheck = now;
 
-    // Prune entries whose window has closed. Checked per-entry (not as a
-    // whole-popup dismiss) so one favourite's dusk/dawn window ending doesn't
-    // clear other still-relevant favourites (e.g. a day fish) out of the
-    // same popup.
+    // Prune entries whose window has closed, or that got unfavorited since
+    // being added. Checked per-entry (not as a whole-popup dismiss) so one
+    // favourite's dusk/dawn window ending doesn't clear other still-relevant
+    // favourites (e.g. a day fish) out of the same popup.
     if (g_FavNotifActive && !g_FavNotif.dismissed) {
         auto& fish = g_FavNotif.fish;
         fish.erase(std::remove_if(fish.begin(), fish.end(), [](const FavFishEntry& e) {
             if (e.fishIdx < 0 || e.fishIdx >= FISH_COUNT) return true;
             const Fish& ef = FISH_TABLE[e.fishIdx];
+            if (!IsFavourite(ef.name)) return true;
             uint32_t esecs = SecondsUntilPhaseForFish(ef, ef.time);
             return !(esecs == 0 || esecs <= (uint32_t)g_NotifyLeadSeconds);
         }), fish.end());
@@ -1753,7 +1754,9 @@ static void RenderFavNotification() {
         ImDrawList* dl     = ImGui::GetWindowDrawList();
 
         int shown = 0;
-        for (auto& entry : g_FavNotif.fish) {
+        int dismissIdx = -1; // index into g_FavNotif.fish to erase after the loop, if any
+        for (int fi = 0; fi < (int)g_FavNotif.fish.size(); ++fi) {
+            auto& entry = g_FavNotif.fish[fi];
             if (shown >= MAX_FISH) break;
             if (entry.fishIdx < 0 || entry.fishIdx >= FISH_COUNT) continue;
             shown++;
@@ -1827,9 +1830,16 @@ static void RenderFavNotification() {
                     g_MapWindowVisible = true;
                     g_MapPanel.NavigateToMap(entry.mapId);
                 }
+                ImGui::SameLine();
             }
+            char dismissBtnLbl[24];
+            snprintf(dismissBtnLbl, sizeof(dismissBtnLbl), "Dismiss##fd%d", entry.fishIdx);
+            if (ImGui::SmallButton(dismissBtnLbl))
+                dismissIdx = fi;
             ImGui::Spacing();
         }
+        if (dismissIdx >= 0 && dismissIdx < (int)g_FavNotif.fish.size())
+            g_FavNotif.fish.erase(g_FavNotif.fish.begin() + dismissIdx);
         if ((int)g_FavNotif.fish.size() > MAX_FISH)
             ImGui::TextDisabled("...and %d more", (int)g_FavNotif.fish.size() - MAX_FISH);
 
@@ -1875,6 +1885,8 @@ static void RenderFavNotification() {
             ImGui::Dummy({cardW, CARD_H});
         }
         ImGui::Button("Open Map: Cantha##omdummy");
+        ImGui::SameLine();
+        ImGui::SmallButton("Dismiss##fddummy");
         ImGui::Spacing();
         ImGui::Separator();
         float btnW = 80.f;
