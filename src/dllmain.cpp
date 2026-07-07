@@ -2053,16 +2053,19 @@ void AddonRender() {
                     }
                     ImGui::EndCombo();
                 }
-                ImGui::SameLine();
-
-                // Direction arrow button
-                if (ImGui::SmallButton(g_SortAsc ? "v" : "^")) {
-                    g_SortAsc = !g_SortAsc;
-                    g_SortDirty = true;
+                // Direction arrow button — meaningless in Default mode (raw table
+                // order isn't reversible), so hide it rather than invent a
+                // "reverse table order" semantic for Default.
+                if (g_SortMode != FishSortMode::Default) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(g_SortAsc ? "v" : "^")) {
+                        g_SortAsc = !g_SortAsc;
+                        g_SortDirty = true;
+                    }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip(g_SortAsc ? "Ascending — click to reverse"
+                                                    : "Descending — click to reverse");
                 }
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip(g_SortAsc ? "Ascending — click to reverse"
-                                                : "Descending — click to reverse");
             }
 
             if (g_SortDirty) {
@@ -2101,7 +2104,7 @@ void AddonRender() {
 
                         // Count visible fish in this collection
                         int visCount = 0;
-                        for (int fi = 0; fi < FISH_COUNT; ++fi) {
+                        for (int fi : g_SortedFishIndices) {
                             if (FISH_TABLE[fi].achievementId != gcol.achievementId) continue;
                             if (FishMatchesFilter(fi)) ++visCount;
                         }
@@ -2158,7 +2161,7 @@ void AddonRender() {
                         ImGui::Indent();
                         const float gCardW = floorf((ImGui::GetContentRegionAvail().x - cardGap) / 2.f);
                         int gcardCol = 0;
-                        for (int fi = 0; fi < FISH_COUNT; ++fi) {
+                        for (int fi : g_SortedFishIndices) {
                             if (FISH_TABLE[fi].achievementId != gcol.achievementId) continue;
                             if (!FishMatchesFilter(fi)) continue;
 
