@@ -52,6 +52,13 @@ public:
     // HOLE_TABLE (single-map regions like Seitung Province).
     static bool IsMapInRegion(uint32_t mapId, const char* region);
 
+    // Number of distinct maps the named region spans (e.g. "Shiverpeak
+    // Mountains" → 11), or 1 for single-map regions not in REGION_MAPS.
+    // Used to weight "Here" sort specificity: a fish tagged only to a huge
+    // core-Tyria region is still more general than one tagged to a small
+    // region, even though both count as "one named region" on the fish.
+    static int RegionMapCount(const char* region);
+
     // Returns true if `mapId` has at least one real fishing hole of type `want`
     // (per HOLE_LOCATION_TABLE), or if `want` is HoleWater::Any. Regions span
     // maps with different hole types (e.g. Shiverpeak's Frostgorge Sound has no

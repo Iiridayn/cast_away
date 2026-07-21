@@ -55,6 +55,16 @@ namespace {
         { "New Kaineng City",     KAINENG_MAPS,          2 },
     };
 
+    // Returns the number of maps `region` spans, or 1 if it isn't a
+    // registered multi-map region (i.e. it's a single-map name resolved
+    // directly via HOLE_TABLE, like "Skywatch Archipelago").
+    int RegionMapCountImpl(const char* region) {
+        if (!region) return 1;
+        for (const auto& r : REGION_MAPS)
+            if (!strcmp(r.name, region)) return r.count;
+        return 1;
+    }
+
     // Returns true if mapId belongs to the named region (multi-map regions only).
     bool IsMapInRegionMulti(uint32_t mapId, const char* region) {
         if (!region) return false;
@@ -1215,6 +1225,8 @@ bool MapPanel::IsMapInRegion(uint32_t mapId, const char* region) {
     }
     return false;
 }
+
+int MapPanel::RegionMapCount(const char* region) { return RegionMapCountImpl(region); }
 
 bool MapPanel::MapHasHoleType(uint32_t mapId, HoleWater want) {
     if (want == HoleWater::Any) return true;

@@ -1621,6 +1621,19 @@ static int NowTimeRank(const Fish& f) {
     return 2; // Any
 }
 
+// Total map breadth a (non-wildcard) fish is catchable across — the sum of
+// each named region's map count (e.g. "Shiverpeak Mountains" alone is 11,
+// "Janthir" alone is 2, a single-map region like "Skywatch Archipelago" is
+// 1). Counting named regions alone isn't enough: a fish tagged only to one
+// huge core-Tyria region is still more generally available than one tagged
+// to one small region, so it should still sort as less specific.
+static int FishRegionBreadth(const Fish& f) {
+    int n = MapPanel::RegionMapCount(f.map);
+    for (const char* extra : f.extraRegions)
+        if (extra) n += MapPanel::RegionMapCount(extra);
+    return n;
+}
+
 static void RebuildSortedFishIndices() {
     std::iota(g_SortedFishIndices.begin(), g_SortedFishIndices.end(), 0);
     if (g_SortMode == FishSortMode::Default && !g_FilterHere && !g_ShowCurrentOnly) return;
@@ -1641,6 +1654,12 @@ static void RebuildSortedFishIndices() {
                     bool sa = fa.map && !strcmp(fa.map, "Saltwater");
                     bool sb = fb.map && !strcmp(fb.map, "Saltwater");
                     if (sa != sb) return sa;
+                } else if (!wa && !wb) {
+                    // Both region-specific: a fish caught across fewer/smaller
+                    // regions is a tighter match for "here" than one that's
+                    // also broadly available elsewhere, so it sorts first.
+                    int ra = FishRegionBreadth(fa), rb = FishRegionBreadth(fb);
+                    if (ra != rb) return ra < rb;
                 }
             }
 
