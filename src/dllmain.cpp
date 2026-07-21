@@ -1333,8 +1333,11 @@ static ImU32 ChipTimeColor(TimeOfDay t) {
 static const char* FishWaterChipLabel(const Fish& f) {
     // Chip space is tight — show just the first recorded hole type even if
     // the fish has more than one; the detail pane's "Hole" attribute lists
-    // all of them.
-    return f.holeTypeCount > 0 ? HoleWaterName(f.holeType[0]) : WaterTypeName(f.water);
+    // all of them. holeTypeCount==0 is the project's documented convention
+    // for a confirmed infobox "Any" (see HoleLocations.h), not "unknown" —
+    // label it as such rather than falling back to the inferred WaterType,
+    // which isn't a field the game itself reports.
+    return f.holeTypeCount > 0 ? HoleWaterName(f.holeType[0]) : "Any";
 }
 
 static ImU32 ChipWaterColor(WaterType w) {
@@ -1497,13 +1500,17 @@ static void RenderFishDetails(int fishIdx) {
         ImGui::TextUnformatted(value && value[0] ? value : "—");
     };
     attr("Map",        f.map);
-    attr("Water",      WaterTypeName(f.water));
     char holeBuf[128] = "";
     for (uint8_t hi = 0; hi < f.holeTypeCount; ++hi) {
         if (hi > 0) strcat(holeBuf, " / ");
         strcat(holeBuf, HoleWaterName(f.holeType[hi]));
     }
-    attr("Hole",       holeBuf[0] ? holeBuf : "—");
+    // holeTypeCount==0 is the documented convention for a confirmed "Any"
+    // (see HoleLocations.h), not missing data.
+    attr("Hole",       holeBuf[0] ? holeBuf : "Any");
+    // Water is inferred (from wiki prose), not a field the game itself
+    // reports the way Hole is — shown after Hole, as supplementary context.
+    attr("Water",      WaterTypeName(f.water));
     {
         // Multiple hole types can have different recommended power; show the
         // highest so the player knows what covers all of this fish's holes.
