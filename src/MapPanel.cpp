@@ -1273,9 +1273,28 @@ namespace {
                 return false;
         }
     }
+
+    // The SotO/Janthir/VoE maps use per-map named "school" holes with no
+    // marker-pack coordinate data (see HoleLocations.h), so MapHasSaltwater's
+    // "no data" fallback below is otherwise the only signal for them — and
+    // that fallback defaults permissive, which is wrong for maps genuinely
+    // lacking any saltwater catch. Audited each map's actual named-hole
+    // catch-table page(s) on the wiki directly instead (2026-07-09):
+    //   1510 Skywatch Archipelago — Fractured Channel Fish includes Saltwater fish
+    //   1526 Inner Nayos          — Nayosian Fish / Dream Fish include Saltwater fish
+    //   1554 Janthir Syntri       — Brackish Janthir Fish includes Saltwater fish
+    //   1593 Starlit Weald        — Freshwater Tropical Fish includes Saltwater fish
+    //   1595 Shipwreck Strand     — Saltwater Tropical Fish (genuinely coastal too)
+    //   1622 Eternity's Garden    — Freshwater Tropical Fish includes Saltwater fish
+    static const uint32_t CONFIRMED_SALTWATER_MAPS[] = { 1510, 1526, 1554, 1593, 1595, 1622 };
+    //   1517 Amnytas       — Astral Fish / Spire Fish have no Saltwater section
+    //   1550 Lowland Shore — Lowland Brackish Fish has no Saltwater section
+    static const uint32_t CONFIRMED_NO_SALTWATER_MAPS[] = { 1517, 1550 };
 }
 
 bool MapPanel::MapHasSaltwater(uint32_t mapId) {
+    for (uint32_t m : CONFIRMED_SALTWATER_MAPS)    if (m == mapId) return true;
+    for (uint32_t m : CONFIRMED_NO_SALTWATER_MAPS) if (m == mapId) return false;
     bool anyDataForMap = false;
     for (int i = 0; i < HOLE_LOCATION_COUNT; ++i) {
         const HoleLocation& h = HOLE_LOCATION_TABLE[i];

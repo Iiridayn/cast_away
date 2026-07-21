@@ -609,8 +609,11 @@ static bool IsFishHere(const Fish& f, int mapId) {
         // World Class Fish drop from every hole type's catch table (Deep,
         // Cavern, Grotto, Quarry, Channel, Volcanic, Offshore, Coastal all
         // confirmed via wiki), so they always pass here. Saltwater fish are
-        // more specific — never present in a purely-freshwater hole's catch
-        // table — so they still require an actual saltwater map.
+        // more specific — some nominally-freshwater named holes (e.g.
+        // Fractured Channel, Freshwater Tropical, Nayosian/Dream, Brackish
+        // Janthir) do include Saltwater-category fish per their own wiki
+        // catch tables, so MapHasSaltwater tracks that per map rather than
+        // assuming a strict fresh/salt split.
         if (f.water == WaterType::Saltwater &&
             !MapPanel::MapHasSaltwater((uint32_t)mapId)) return false;
         return true;
